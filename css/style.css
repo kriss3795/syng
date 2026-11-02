@@ -1,17 +1,18 @@
 /* Syng — sistema visual
    Tipos: Fredoka (títulos, números) + Nunito (texto).
-   Color: violeta "voz" como protagonista; verde/ámbar/rosado SOLO con significado (afinado / casi / no).
+   Color: turquesa del logo como protagonista; verde/ámbar/rosado SOLO con significado (afinado / casi / no).
    Botones "físicos" con sombra inferior (se hunden al tocar). El Chincol es el único personaje. */
 :root {
-  --paper: #FBF9FF; --card: #FFFFFF; --ink: #231942; --muted: #6E6890; --line: #E6E1F5; --track: #ECE8F7;
-  --primary: #6B4EFF; --primary-d: #4B30D9; --primary-l: #EEE9FF;
+  --paper: #FCF8F6; --card: #FFFFFF; --ink: #2A2230; --muted: #75697A; --line: #EEE4E0; --track: #F2EAE6;
+  --primary: #12A3A0; --primary-d: #0B7D7A; --primary-l: #DDF4F3;
   --ok: #1FB86B; --ok-d: #148A4F; --ok-l: #DDF8EA;
   --warn: #F5A524; --warn-d: #C77F0A; --warn-l: #FFF3D9;
   --bad: #F0506E; --bad-d: #C7314F; --bad-l: #FFE4EA;
-  --blue: #2FA8E6; --blue-d: #1B85BC; --orange: #FF8F3C; --orange-d: #D86B1C; --green: #1FB86B; --green-d: #148A4F; --violet: #6B4EFF; --violet-d: #4B30D9;
+  --blue: #2FA8E6; --blue-d: #1B85BC; --orange: #FF8F3C; --orange-d: #D86B1C; --green: #1FB86B; --green-d: #148A4F; --violet: #7A5CFF; --violet-d: #5638D9;
+  --teal: #12A3A0; --teal-d: #0B7D7A; --rust: #C4572F; --rust-d: #993E1D; --pink: #E85D9A; --pink-d: #B93A72;
   /* pentagrama (tema claro) */
-  --note: #6B4EFF; --note-active: #4B30D9; --note-ink: #fff; --demo: #CFC7EE; --voice: #231942; --now: #F0506E;
-  --roll-bg: #FFFFFF; --roll-alt: #F6F3FE; --roll-row: #ECE6FF; --roll-line: #E2DCF4; --roll-gutter: #FFFFFF; --roll-label: #9890B8; --roll-accent: #6B4EFF;
+  --note: #12A3A0; --note-active: #0B7D7A; --note-ink: #fff; --demo: #BFE3E1; --voice: #2A2230; --now: #F0506E;
+  --roll-bg: #FFFFFF; --roll-alt: #FAF5F3; --roll-row: #E3F4F3; --roll-line: #EDE3DF; --roll-gutter: #FFFFFF; --roll-label: #A0929A; --roll-accent: #12A3A0;
   --r-sm: 12px; --r-md: 18px; --r-lg: 26px;
   --display: 'Fredoka', 'Nunito', system-ui, sans-serif;
   --body: 'Nunito', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -36,7 +37,8 @@ small, .small { font-size: 13.5px; }
 
 /* ---------- Estructura ---------- */
 header { position: sticky; top: 0; z-index: 20; display: flex; justify-content: space-between; align-items: center; padding: calc(10px + env(safe-area-inset-top)) 18px 10px; background: var(--paper); border-bottom: 2px solid var(--line); }
-.logo { font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--primary); letter-spacing: -0.02em; }
+.logo { display: inline-flex; align-items: center; gap: 8px; font-family: var(--display); font-weight: 700; font-size: 24px; color: var(--primary-d); letter-spacing: -0.02em; }
+.logo img { width: 34px; height: 34px; border-radius: 10px; }
 .hdr-stats { display: flex; gap: 8px; }
 .stat-chip { display: inline-flex; align-items: center; gap: 4px; font-family: var(--display); font-weight: 600; font-size: 17px; color: var(--muted); padding: 4px 10px; border-radius: 999px; background: var(--card); border: 2px solid var(--line); }
 .stat-chip.flame.lit { color: var(--orange); border-color: #FFD9BC; }
@@ -72,7 +74,7 @@ body.focus main { padding-bottom: 0; max-width: 680px; }
 .chip.on { background: var(--primary); border-color: var(--primary); }
 
 .card { display: block; background: var(--card); border: 2px solid var(--line); border-radius: var(--r-lg); padding: 16px; margin: 12px 0; }
-.card.install { border-color: #DCD3FF; background: var(--primary-l); padding: 12px 14px; }
+.card.install { border-color: #B7E6E4; background: var(--primary-l); padding: 12px 14px; }
 .card.install p { margin: 4px 0; }
 .card.install .btn { min-height: 40px; }
 .progress { height: 12px; background: var(--track); border-radius: 999px; overflow: hidden; margin: 8px 0; }
@@ -83,7 +85,7 @@ body.focus main { padding-bottom: 0; max-width: 680px; }
 
 /* ---------- Chincol ---------- */
 .chincol { display: inline-block; flex: none; }
-.chincol svg { display: block; overflow: visible; }
+.chincol img { display: block; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 4px 6px rgba(42,34,48,.12)); }
 .coach { display: flex; align-items: flex-end; gap: 10px; margin: 10px 0; }
 .coach .bubble { position: relative; flex: 1; background: var(--card); border: 2px solid var(--line); border-radius: 20px; padding: 12px 40px 12px 14px; font-size: 16.5px; line-height: 1.45; }
 .coach .bubble::before { content: ''; position: absolute; left: -9px; bottom: 16px; width: 14px; height: 14px; background: var(--card); border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); transform: rotate(45deg); }
@@ -98,8 +100,8 @@ body.speaking .coach .chincol { animation: bob .45s ease-in-out infinite alterna
 /* ---------- Inicio ---------- */
 .hero { background: var(--card); border: 2px solid var(--line); border-radius: var(--r-lg); padding: 14px 16px 12px; margin: 12px 0; }
 .hero .coach { margin-top: 0; }
-.hero .coach .bubble { background: var(--primary-l); border-color: #DCD3FF; }
-.hero .coach .bubble::before { background: var(--primary-l); border-color: #DCD3FF; }
+.hero .coach .bubble { background: var(--primary-l); border-color: #B7E6E4; }
+.hero .coach .bubble::before { background: var(--primary-l); border-color: #B7E6E4; }
 .hero-row { display: flex; flex-direction: column; gap: 12px; align-items: stretch; }
 .hero-row .btn.big { margin: 0; }
 .goal { display: flex; align-items: center; gap: 8px; }
@@ -121,12 +123,13 @@ body.speaking .coach .chincol { animation: bob .45s ease-in-out infinite alterna
 .node.violet { background: var(--violet); box-shadow: 0 7px 0 var(--violet-d); } .node.blue { background: var(--blue); box-shadow: 0 7px 0 var(--blue-d); }
 .node.orange { background: var(--orange); box-shadow: 0 7px 0 var(--orange-d); } .node.green { background: var(--green); box-shadow: 0 7px 0 var(--green-d); }
 .node:active { transform: translateY(5px); }
+.node.teal { background: var(--teal); box-shadow: 0 7px 0 var(--teal-d); } .node.rust { background: var(--rust); box-shadow: 0 7px 0 var(--rust-d); } .node.pink { background: var(--pink); box-shadow: 0 7px 0 var(--pink-d); }
 .node.done { background: #FFC93C; box-shadow: 0 7px 0 #D99E0A; color: #fff; }
-.node.locked { background: #E5E1F0; box-shadow: 0 7px 0 #CBC5DD; color: #A9A2C2; }
-.node.current { outline: 6px solid rgba(107,78,255,.18); animation: pulse 1.8s ease-in-out infinite; }
-@keyframes pulse { 0%,100% { outline-color: rgba(107,78,255,.12); } 50% { outline-color: rgba(107,78,255,.32); } }
+.node.locked { background: #EDE6E3; box-shadow: 0 7px 0 #D6CCC8; color: #ADA0A6; }
+.node.current { outline: 6px solid rgba(18,163,160,.18); animation: pulse 1.8s ease-in-out infinite; }
+@keyframes pulse { 0%,100% { outline-color: rgba(18,163,160,.12); } 50% { outline-color: rgba(18,163,160,.32); } }
 .node-label { margin-top: 12px; font-weight: 800; font-size: 13.5px; text-align: center; max-width: 140px; color: var(--ink); }
-.node.locked + .node-label { color: #A9A2C2; }
+.node.locked + .node-label { color: #ADA0A6; }
 .stars-mini { display: block; color: #F2B705; letter-spacing: 2px; font-size: 12px; }
 .node-tip { position: absolute; top: -40px; background: var(--card); border: 2px solid var(--line); color: var(--primary); font-weight: 900; font-size: 13px; padding: 5px 12px; border-radius: 12px; white-space: nowrap; animation: float 1.6s ease-in-out infinite alternate; }
 .node-tip::after { content: ''; position: absolute; left: 50%; bottom: -7px; width: 10px; height: 10px; background: var(--card); border-right: 2px solid var(--line); border-bottom: 2px solid var(--line); transform: translateX(-50%) rotate(45deg); }
@@ -168,6 +171,7 @@ body.speaking .coach .chincol { animation: bob .45s ease-in-out infinite alterna
 canvas.roll { width: 100%; height: min(440px, 50vh); display: block; background: var(--roll-bg); border: 2px solid var(--line); border-radius: var(--r-md); margin: 8px 0; }
 canvas.roll.small { height: min(150px, 22vh); }
 canvas.roll.rhythm { height: 120px; }
+canvas.roll.dyn { height: min(130px, 18vh); }
 .keep canvas.roll { height: min(300px, 38vh); }
 .sheet-bird { margin-top: 8vh; }
 .holdbar { position: relative; height: 26px; background: var(--track); border-radius: 999px; overflow: hidden; margin: 8px 0; }
@@ -181,7 +185,7 @@ canvas.roll.rhythm { height: 120px; }
 .tmeter { position: relative; height: 230px; background: var(--bad-l); border-radius: 20px; overflow: hidden; border: 2px solid var(--line); }
 .tz { position: absolute; left: 0; right: 0; background: var(--ok-l); border-top: 2px dashed #9BE3BF; border-bottom: 2px dashed #9BE3BF; }
 .tcenter { position: absolute; left: 8px; right: 8px; top: 50%; height: 3px; margin-top: -1.5px; background: var(--ok); border-radius: 2px; }
-.tball { position: absolute; left: 50%; bottom: 50%; width: 34px; height: 34px; margin: 0 0 -17px -17px; border-radius: 50%; background: var(--voice); border: 4px solid #fff; box-shadow: 0 3px 8px rgba(35,25,66,.3); transition: bottom .08s linear, background .15s; }
+.tball { position: absolute; left: 50%; bottom: 50%; width: 34px; height: 34px; margin: 0 0 -17px -17px; border-radius: 50%; background: var(--voice); border: 4px solid #fff; box-shadow: 0 3px 8px rgba(42,34,48,.3); transition: bottom .08s linear, background .15s; }
 .tball.ok { background: var(--ok); } .tball.warn { background: var(--warn); } .tball.off { opacity: .25; }
 .tlab { position: absolute; left: 0; right: 0; text-align: center; font-size: 10.5px; font-weight: 800; color: #C46A7E; }
 .tlab.top { top: 5px; } .tlab.bot { bottom: 5px; }
@@ -193,7 +197,7 @@ canvas.roll.rhythm { height: 120px; }
 
 /* respiración */
 .breath-label { font-family: var(--display); font-size: 26px; font-weight: 600; text-align: center; margin-top: 8px; }
-.breath-orb { width: 210px; height: 210px; margin: 18px auto; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #A996FF, var(--primary)); display: flex; align-items: center; justify-content: center; transform: scale(.55); transition: transform .12s linear; box-shadow: 0 10px 30px rgba(107,78,255,.35); }
+.breath-orb { width: 210px; height: 210px; margin: 18px auto; border-radius: 50%; background: radial-gradient(circle at 35% 30%, #A996FF, var(--primary)); display: flex; align-items: center; justify-content: center; transform: scale(.55); transition: transform .12s linear; box-shadow: 0 10px 30px rgba(18,163,160,.35); }
 .breath-count { font-family: var(--display); font-size: 64px; font-weight: 600; color: #fff; }
 .lvbar { height: 18px; background: var(--track); border-radius: 999px; overflow: hidden; }
 .lvfill { height: 100%; width: 0; background: var(--blue); border-radius: 999px; transition: width .08s; }
@@ -250,7 +254,7 @@ canvas.roll.rhythm { height: 120px; }
 .form .field { display: block; font-weight: 800; margin: 12px 0; }
 .field { display: inline-flex; flex-direction: column; gap: 4px; font-weight: 800; font-size: 14px; }
 input[type=text], input[type=number], textarea, select { font: 600 16px var(--body); padding: 11px 12px; border: 2px solid var(--line); border-radius: var(--r-sm); background: var(--card); color: var(--ink); width: 100%; }
-.file-pick { display: flex; align-items: center; gap: 12px; padding: 14px; margin: 10px 0; border: 2px dashed #CFC6EE; border-radius: var(--r-md); background: var(--card); cursor: pointer; color: var(--primary); }
+.file-pick { display: flex; align-items: center; gap: 12px; padding: 14px; margin: 10px 0; border: 2px dashed #BFE3E1; border-radius: var(--r-md); background: var(--card); cursor: pointer; color: var(--primary); }
 .file-pick.req { border-color: var(--primary); }
 .file-pick span { display: flex; flex-direction: column; color: var(--ink); }
 .file-pick input { position: absolute; opacity: 0; width: 1px; height: 1px; }
@@ -325,3 +329,9 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 
 .k-controls > .btn { flex: 1 1 auto; margin: 4px; }
 .k-controls:has(> .btn) { display: flex; flex-wrap: wrap; }
+
+/* colores extra de unidades */
+.unit.teal .unit-head { background: var(--teal); } .unit.rust .unit-head { background: var(--rust); } .unit.pink .unit-head { background: var(--pink); }
+.tile.teal .tile-ic { background: var(--teal); } .tile.rust .tile-ic { background: var(--rust); } .tile.pink .tile-ic { background: var(--pink); }
+.lesson-intro.teal h1 { color: var(--teal-d); } .lesson-intro.rust h1 { color: var(--rust-d); } .lesson-intro.pink h1 { color: var(--pink-d); }
+.hero .coach .chincol { width: 84px !important; height: 84px !important; }

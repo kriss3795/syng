@@ -1,8 +1,9 @@
 # Syng · Aprende a cantar desde cero
 
-App web instalable (PWA) estilo Duolingo para aprender a cantar afinado y a tiempo, con un profe que te acompaña: **el Chincol**.
+App web instalable (PWA) estilo Duolingo para aprender a cantar afinado y a tiempo, con un profe que te acompaña: **el Chincol** (dibujos en `img/`, una pose por momento: feliz, hola, atento/canta, piensa, celebra).
 
-- **Camino de 33 lecciones en 10 unidades**: cantas desde la primera clase y la técnica (respiración, apoyo, aire parejo, ataque limpio, resonancia, volumen sin gritar, agudos) va integrada y aplicada al tiro.
+- **Camino de 90 lecciones en 16 unidades**, cada una con prueba de repaso: tu voz, primeras melodías, sacar la voz, ritmo (puntillo, tresillo, síncopa), vocales y dicción, escalas y saltos, afinación fina, dinámica (messa di voce), registros (pecho, cabeza, mixta), canciones de dominio público, lectura a primera vista, agilidad, dos voces (armonía, canon, coros), menor y cromático, estilo y resistencia (vibrato), maestría. Orden basado en la pedagogía vocal clásica y en los programas ABRSM y Rockschool.
+- **Ejercicios que miden de verdad**: igualar nota (cents), secuencias con eco/juntos/lectura, notas largas (afinación + aire + vibrato), dinámica (forma del volumen en dB y que la nota no se mueva al crecer), armonía/canon (exige audífonos), oído (sube/baja, intervalos, desafinación fina, mayor/menor) y ritmo.
 - **El Chincol habla**: instrucciones, técnica y correcciones con voz neuronal pregrabada (Kokoro, acento latinoamericano). Nunca habla mientras se mide tu voz.
 - **Diagnóstico tipo profe**: detecta si tiendes a quedar bajo/alto, entras desde abajo, la nota tiembla, se cae al final, los saltos quedan cortos, entras tarde/temprano o cantas en otra octava, y te da el consejo concreto. Si fallas dos veces, propone una versión más fácil.
 - **Afinación fina en cents**, afinador vertical, nota larga con barra de aire, bordón con afinación pura, oído, ritmo.

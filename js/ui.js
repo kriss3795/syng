@@ -49,6 +49,7 @@ const ICONS = {
   plus: '<path d="M12 5v14M5 12h14"/>',
   chevron: '<path d="M9 5l7 7-7 7"/>',
   wave: '<path d="M3 12h2l2-6 3 12 3-9 2 5 2-2h4"/>',
+  trophy: '<path d="M7 4h10v5a5 5 0 0 1-10 0z"/><path d="M7 6H4a3 3 0 0 0 3 4M17 6h3a3 3 0 0 1-3 4M12 14v3M8 21h8M9 17h6v4H9z"/>',
   party: '<path d="M4 20l5-14 9 9z"/><path d="M14 4l1 2M19 8l2-1M17 3l-1 3"/>',
   sync: '<circle cx="12" cy="13" r="8"/><path d="M12 9v4l3 2M9 2h6"/>',
   edit: '<path d="M4 20h4L19 9l-4-4L4 16z"/>',

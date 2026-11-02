@@ -75,12 +75,12 @@ async function route() {
   }
 }
 
-const EXTRA = { oido: 'Entrenar el oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango', aire: 'Aire parejo' };
+const EXTRA = { oido: 'Entrenar el oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango', aire: 'Aire parejo', lectura: 'Leer y cantar', dinamica: 'Dinámica', canciones: 'Canciones clásicas' };
 
 // ---------- Inicio: clase de hoy + camino ----------
 function isUnlocked(idx) {
   if (idx === 0) return true;
-  return !!lessonState(ALL_LESSONS[idx - 1].id)?.done;
+  return !!lessonState(ALL_LESSONS[idx].id)?.done || !!lessonState(ALL_LESSONS[idx - 1].id)?.done;
 }
 function nextLessonIdx() { return ALL_LESSONS.findIndex((l, i) => isUnlocked(i) && !lessonState(l.id)?.done); }
 
@@ -125,11 +125,13 @@ function homeView() {
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
 function lessonIcon(l) {
+  if (l.check) return 'trophy';
   const t = l.build.toString();
   if (/range/.test(t)) return 'mic';
   if (/rhythm\(/.test(t)) return 'drum';
   if (/breath\(|sustain\(/.test(t)) return 'breath';
   if (/ear\(/.test(t) && !/seq\(/.test(t)) return 'ear';
+  if (/dyn\(/.test(t)) return 'wave';
   return 'note';
 }
 function flash(msg) {
@@ -284,13 +286,16 @@ function gymView() {
     h('div', { class: 'tiles' },
       tile('#calentamiento', 'sparkle', 'Calentamiento', 'Aire, lip trill y escalas · 6 min', 'orange'),
       tile('#extra-aire', 'breath', 'Aire parejo', 'Notas largas con barra de aire', 'orange'),
-      tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'violet')),
+      tile('#extra-dinamica', 'wave', 'Dinámica', 'Crescendo y messa di voce', 'orange'),
+      tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal')),
     h('h2', { class: 'sec' }, 'Afinación y oído'),
     h('div', { class: 'tiles' },
       tile('#extra-fina', 'target', 'Afinación fina', 'Notas clavadas y bordón', 'blue'),
       tile('#extra-oido', 'ear', 'Entrenar el oído', 'Sube/baja, intervalos', 'blue'),
       tile('#extra-melodia', 'note', 'Melodías nuevas', 'Cada vez distintas', 'blue'),
-      tile('#extra-rango', 'wave', 'Todo tu rango', 'Notas por todo tu registro', 'blue')),
+      tile('#extra-rango', 'wave', 'Todo tu rango', 'Notas por todo tu registro', 'blue'),
+      tile('#extra-lectura', 'note', 'Leer y cantar', 'Solo te doy el do', 'teal'),
+      tile('#extra-canciones', 'note', 'Canciones clásicas', 'Dos al azar, de memoria', 'teal')),
     h('h2', { class: 'sec' }, 'Ritmo y herramientas'),
     h('div', { class: 'tiles' },
       tile('#extra-ritmo', 'drum', 'Ritmo', 'Golpes y entradas a tiempo', 'green'),

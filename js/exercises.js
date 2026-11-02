@@ -302,7 +302,9 @@ async function runMatch(spec, root, sig) {
 
 // ---------- Secuencias: escalas, intervalos, sirenas, melodías ----------
 // spec.pattern: [{s: semitonos desde la base | null (silencio), d: tiempos, g: semitono final (glissando), l: etiqueta}]
-// Modos: 'echo' = escuchas y repites; 'along' = la 1ª vuelta cantas JUNTO a la guía (sin nota), las siguientes solo (con nota).
+// Modos: 'echo' = escuchas y repites; 'along' = la 1ª vuelta cantas JUNTO a la guía (sin nota), las siguientes solo (con nota);
+//        'read' = lectura: solo te doy el do (tónica) y cantas leyendo los nombres, sin demostración.
+// spec.accomp: otra voz que suena MIENTRAS cantas (armonía / canon). Exige audífonos.
 async function runSeq(spec, root, sig) {
   const tol = spec.tol ?? 50; // ancho total de la zona (±tol/2)
   const ttol = (spec.ttol ?? 200) / 1000;
@@ -311,15 +313,17 @@ async function runSeq(spec, root, sig) {
   const feedback = spec.feedback || 'live';
   let reps = spec.reps || [0];
   if (mode === 'along' && reps.length === 1) reps = [reps[0], reps[0]];
-  const instr = spec.text || line(mode === 'echo' ? 'ins_echo' : 'ins_along');
-  const seqVoice = [spec.voice || (spec.text ? null : mode === 'echo' ? 'ins_echo' : 'ins_along'), feedback === 'after' ? 'ins_sinred' : null].filter(Boolean);
+  const defIns = mode === 'echo' ? 'ins_echo' : mode === 'read' ? 'ins_read' : 'ins_along';
+  const instr = spec.text || line(defIns);
+  const seqVoice = [spec.voice || (spec.text ? null : defIns), spec.accomp ? 'ins_harm' : null, feedback === 'after' ? 'ins_sinred' : null].filter(Boolean);
   const legend = h('div', { class: 'legend' },
-    h('span', {}, h('i', { class: 'lg demo' }), mode === 'echo' ? 'Yo canto' : 'Juntos'),
+    mode === 'read' ? null : h('span', {}, h('i', { class: 'lg demo' }), mode === 'echo' ? 'Yo canto' : 'Juntos'),
     h('span', {}, h('i', { class: 'lg note' }), 'Tu turno'),
     h('span', {}, h('i', { class: 'lg ok' }), 'Afinado'),
     h('span', {}, h('i', { class: 'lg warn' }), 'Desafinado'));
-  await startButton(root, instr + (mode === 'along' && spec.text ? '<br><small>La 1ª vuelta cantamos juntos (sin nota); las siguientes, tú solo.</small>' : '') + (feedback === 'after' ? '<br><br><b>Modo sin red:</b> ' + line('ins_sinred') : ''), 'Empezar', 'atento', legend, seqVoice.length ? seqVoice : null);
+  await startButton(root, instr + (mode === 'along' && spec.text ? '<br><small>La 1ª vuelta cantamos juntos (sin nota); las siguientes, tú solo.</small>' : '') + (spec.accomp ? '<br><br>🎧 ' + line('ins_harm') : '') + (feedback === 'after' ? '<br><br><b>Modo sin red:</b> ' + line('ins_sinred') : ''), 'Empezar', 'atento', legend, seqVoice.length ? seqVoice : null);
   if (!(await ensureMic(root))) return { score: 0 };
+  if (spec.accomp && !(await requireHeadphones(root, sig, spec.base + (spec.accomp.find((n) => n.s != null)?.s || 0), false))) return { score: null, detail: 'Ejercicio saltado (sin audífonos)', skipped: true };
 
   const c = getCtx();
   const T0 = c.currentTime + 0.4;
@@ -327,11 +331,30 @@ async function runSeq(spec, root, sig) {
   const events = [];
   let t = 0;
   const countIn = spec.countIn ?? 4;
+  if (mode === 'read') { // tónica: do-mi-sol y el do sostenido, para orientar el oído
+    const b0 = spec.base + reps[0];
+    [0, 4, 7].forEach((iv, k) => events.push({ type: 'note', t: k * 0.45, d: 0.42, m0: b0 + iv, m1: b0 + iv, gain: 0.22 }));
+    events.push({ type: 'note', t: 1.4, d: 1.3, m0: b0, m1: b0, gain: 0.26 });
+    t = 3;
+  }
+  const tonicEnd = t;
   for (let i = 0; i < countIn; i++) events.push({ type: 'click', t: t + i * beat, accent: i === 0 });
   t += countIn * beat;
+  const musicStart = t;
   const label = (s) => spec.labels === 'none' ? '' : spec.labels === 'solf' || !spec.labels ? solfege(s) : spec.labels;
-  const lay = (base, demo, play) => {
+  const accDelay = (spec.accompDelay || 0) * beat;
+  const layAccomp = (base, from) => { // la otra voz: suena, no se evalúa
+    let ta = from + accDelay;
+    for (const n of spec.accomp) {
+      const d = n.d * beat;
+      if (n.s != null) events.push({ type: 'note', t: ta, d: d * 0.95, m0: base + n.s, m1: base + n.s, gain: spec.accompGain ?? 0.2 });
+      ta += d;
+    }
+    return ta;
+  };
+  const lay = (base, demo, play, withAcc = false) => {
     let tt = t;
+    const accEnd = withAcc && spec.accomp ? layAccomp(base, tt) : 0;
     for (const n of spec.pattern) {
       const d = n.d * beat;
       if (n.s != null) {
@@ -345,17 +368,24 @@ async function runSeq(spec, root, sig) {
       }
       tt += d;
     }
+    if (accEnd > tt) { // el canon termina después: seguimos marcando el pulso
+      if (spec.clicks !== false) for (let k = 0; tt + k * beat < accEnd; k++) events.push({ type: 'click', t: tt + k * beat, accent: false, soft: true });
+      tt = accEnd;
+    }
     return tt;
   };
   reps.forEach((r, ri) => {
     const base = spec.base + r;
     if (mode === 'echo') {
-      t = lay(base, true, true);
+      t = lay(base, true, true, !!spec.accompInDemo);
       for (let i = 0; i < 2; i++) events.push({ type: 'click', t: t + i * beat, accent: i === 0 });
       t += 2 * beat;
-      t = lay(base, false, false);
+      t = lay(base, false, false, true);
+    } else if (mode === 'read') {
+      if (ri > 0) { events.push({ type: 'note', t, d: beat * 1.8, m0: base, m1: base, gain: 0.24 }); for (let i = 0; i < 2; i++) events.push({ type: 'click', t: t + i * beat, accent: i === 0 }); t += 2 * beat; }
+      t = lay(base, false, false, true);
     } else {
-      t = lay(base, ri === 0, ri === 0);
+      t = lay(base, ri === 0, ri === 0, true);
     }
     t += beat;
   });
@@ -405,7 +435,7 @@ async function runSeq(spec, root, sig) {
     roll.addUser(now, p.midi, ok);
     roll.draw(now, { showUser: feedback === 'live' });
     const cur = targets.find((x) => now >= x.t0 && now <= x.t1);
-    status.textContent = now < 0 ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
+    status.textContent = mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
     await raf();
   }
   // ---- evaluar ----
@@ -482,6 +512,11 @@ async function runEar(spec, root, sig) {
       const iv = ivs[Math.floor(Math.random() * ivs.length)];
       q = '¿Qué intervalo escuchas?'; opts = ivs.map((i) => IV_NAMES[i] || i + ' st'); ans = ivs.indexOf(iv);
       play = () => { playNote(a, c.currentTime + 0.05, 0.7); playNote(a + iv, c.currentTime + 0.85, 0.9); };
+    } else if (spec.kind === 'mode') { // color: acorde mayor o menor
+      const minor = Math.random() < 0.5;
+      const third = minor ? 3 : 4;
+      q = '¿Este acorde suena mayor (luminoso) o menor (triste)?'; opts = ['Mayor', 'Menor']; ans = minor ? 1 : 0;
+      play = () => { [0, third, 7].forEach((iv, k) => playNote(a + iv, c.currentTime + 0.05 + k * 0.38, 0.4, 0.22)); [0, third, 7].forEach((iv) => playNote(a + iv, c.currentTime + 1.3, 1.2, 0.14)); };
     } else { // detune: afinación fina perceptiva
       const amts = spec.cents || [50, 35, 25];
       const amt = amts[Math.min(amts.length - 1, Math.floor((r / rounds) * amts.length))];
@@ -604,7 +639,7 @@ async function runSustain(spec, root, sig) {
   if (!(await ensureMic(root))) return { score: 0 };
   const c = getCtx();
   const per = [];
-  let allPitch = [], allRms = [], tails = 0;
+  let allPitch = [], allRms = [], tails = 0; const vibs = [];
   for (let i = 0; i < notes.length && !sig.aborted; i++) {
     const target = notes[i];
     const coachBox = h('div');
@@ -647,6 +682,7 @@ async function runSustain(spec, root, sig) {
     const v = fr.filter((f) => f.t > 0.3 && f.cents != null && Math.abs(f.cents) < 150);
     if (v.length < 10) { per.push(0); continue; }
     const inT = v.filter((f) => Math.abs(f.cents) <= tol / 2).length / v.length;
+    // con vibrato se evalúa el centro de la oscilación, no cada cuadro
     const m = v.reduce((a, f) => a + f.cents, 0) / v.length;
     const sd = Math.sqrt(v.reduce((a, f) => a + (f.cents - m) ** 2, 0) / v.length);
     const rs = fr.filter((f) => f.t > 0.3 && f.rms > 0).map((f) => f.rms);
@@ -654,11 +690,23 @@ async function runSustain(spec, root, sig) {
     const cv = rs.length ? Math.sqrt(rs.reduce((a, b) => a + (b - rm) ** 2, 0) / rs.length) / (rm || 1) : 1;
     const body = v.filter((f) => f.t < secs * 0.7), tail = v.filter((f) => f.t >= secs * 0.75);
     if (body.length > 5 && tail.length > 5) { const mb = body.reduce((a, f) => a + f.cents, 0) / body.length, mt = tail.reduce((a, f) => a + f.cents, 0) / tail.length; if (mb - mt > 20) tails++; }
-    const pitchSteady = Math.max(0, Math.min(1, 1 - (sd - 8) / 30));
+    let vib = null;
+    if (spec.vibrato) { // oscilación periódica alrededor de la nota: frecuencia (cruces por la media móvil) y amplitud
+      const w = 15; const det = [];
+      for (let k = w; k < v.length - w; k++) { let a = 0; for (let j = k - w; j <= k + w; j++) a += v[j].cents; det.push({ t: v[k].t, c: v[k].cents - a / (2 * w + 1) }); }
+      let cross = 0; for (let k = 1; k < det.length; k++) if ((det[k - 1].c < 0) !== (det[k].c < 0)) cross++;
+      const dur = det.length > 1 ? det[det.length - 1].t - det[0].t : 0;
+      const rate = dur > 0 ? cross / 2 / dur : 0;
+      const ext = Math.sqrt(det.reduce((a, d) => a + d.c * d.c, 0) / Math.max(1, det.length)) * Math.SQRT2;
+      vib = { rate, ext, ok: rate >= 4 && rate <= 8 && ext >= 12 && ext <= 120 };
+      vibs.push(vib);
+    }
+    const pitchSteady = vib ? 1 : Math.max(0, Math.min(1, 1 - (sd - 8) / 30));
     const airSteady = Math.max(0, Math.min(1, 1 - (cv - 0.15) / 0.45));
-    per.push(0.5 * Math.min(1, inT / 0.8) + 0.25 * pitchSteady + 0.25 * airSteady);
+    const tuneScore = vib ? Math.max(0, Math.min(1, 1 - (Math.abs(m) - tol / 2) / 40)) : Math.min(1, inT / 0.8);
+    per.push(0.5 * tuneScore + 0.25 * pitchSteady + 0.25 * airSteady);
     allPitch.push({ m, sd }); allRms.push(cv);
-    if (inT > 0.6) sfx('ok');
+    if (vib ? Math.abs(m) <= tol / 2 : inT > 0.6) sfx('ok');
     await sleep(400);
   }
   const score = per.reduce((a, b) => a + b, 0) / Math.max(1, per.length);
@@ -669,13 +717,127 @@ async function runSustain(spec, root, sig) {
     const cv = allRms.reduce((a, b) => a + b, 0) / allRms.length;
     if (mm < -20) issues.push({ key: 'bajo', voice: 'd_bajo', weight: 60, text: `Quedaste en promedio <b>${Math.round(-mm)} cents bajo</b>.`, tip: 'Piensa la nota un poquito más arriba y no dejes de dar aire.' });
     if (mm > 20) issues.push({ key: 'alto', voice: 'd_alto', weight: 60, text: `Quedaste en promedio <b>${Math.round(mm)} cents alto</b>.`, tip: 'Suelta la mandíbula y canta más suave.' });
-    if (sd > 20) issues.push({ key: 'inestable', voice: 'd_inestable', weight: 55, text: `La altura <b>tiembla</b> (±${Math.round(sd)} cents).`, tip: 'Aire continuo, como un hilo. Costillas abiertas mientras cantas.' });
+    if (sd > 20 && !(spec.vibrato && vibs.some((x) => x.ok))) issues.push({ key: 'inestable', voice: 'd_inestable', weight: 55, text: `La altura <b>tiembla</b> (±${Math.round(sd)} cents).`, tip: 'Aire continuo, como un hilo. Costillas abiertas mientras cantas.' });
     if (cv > 0.4) issues.push({ key: 'aire', voice: 'd_aire', weight: 50, text: 'El <b>volumen</b> sube y baja: el aire no está saliendo parejo.', tip: 'No sueltes todo al principio. Imagina que tienes que llegar con aire hasta el final.' });
     if (tails >= 1) issues.push({ key: 'cae', voice: 'd_cae', weight: 52, text: 'Al final de la nota <b>se cae la afinación</b>.', tip: 'Mantén la expansión de las costillas hasta el último segundo.' });
     var detail = `Desviación media ${Math.round(Math.abs(mm))} cents, vaivén ±${Math.round(sd)} cents, aire ${cv < 0.25 ? 'muy parejo' : cv < 0.4 ? 'bastante parejo' : 'irregular'}.`;
+    if (spec.vibrato) {
+      const okV = vibs.filter((x) => x.ok);
+      detail += okV.length ? ` Vibrato detectado en ${okV.length} de ${vibs.length} notas: ≈${(okV.reduce((a, x) => a + x.rate, 0) / okV.length).toFixed(1)} oscilaciones por segundo, ±${Math.round(okV.reduce((a, x) => a + x.ext, 0) / okV.length)} cents.` : ' No detecté vibrato (no es obligatorio: aparece solo con la voz suelta).';
+    }
   }
   issues.sort((a, b) => b.weight - a.weight);
   return { score, issues, detail: detail || 'No te escuché sostener la nota.' };
 }
 
-const RUNNERS = { info: runInfo, breath: runBreath, range: runRange, match: runMatch, seq: runSeq, ear: runEar, rhythm: runRhythm, sustain: runSustain };
+// ---------- Dinámica: crescendo, decrescendo y messa di voce ----------
+// Mide dos cosas a la vez: que el volumen siga la curva (correlación con la forma pedida y rango en dB)
+// y que la altura NO se mueva al cambiar el volumen (el error típico: subir de tono al crecer, caer al apagar).
+const SHAPES = {
+  swell: (x) => Math.sin(Math.PI * x), // messa di voce: suave → fuerte → suave
+  cresc: (x) => x,
+  decresc: (x) => 1 - x,
+};
+const SHAPE_TXT = { swell: 'suave → fuerte → suave', cresc: 'de suave a fuerte', decresc: 'de fuerte a suave' };
+async function runDynamics(spec, root, sig) {
+  const tol = spec.tol ?? 60;
+  const secs = spec.secs ?? 6;
+  const shape = spec.shape || 'swell';
+  const f = SHAPES[shape];
+  await startButton(root, spec.text || line('ins_dyn'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_dyn'));
+  if (!(await ensureMic(root))) return { score: 0 };
+  const c = getCtx();
+  const per = []; const issues = []; const details = [];
+  let sharpCresc = 0, flatSoft = 0, smallRange = 0;
+  for (let i = 0; i < spec.notes.length && !sig.aborted; i++) {
+    const target = spec.notes[i];
+    const coachBox = h('div');
+    const setCoach = (t, m) => coachBox.replaceChildren(say(t, m, { compact: true }));
+    const vol = h('canvas', { class: 'roll dyn' });
+    const canvas = h('canvas', { class: 'roll small' });
+    root.replaceChildren(h('div', { class: 'ex' }, coachBox,
+      h('div', { class: 'row between' }, h('span', { class: 'pill' }, `Nota ${i + 1} de ${spec.notes.length}`), h('span', { class: 'pill' }, SHAPE_TXT[shape])),
+      h('div', { class: 'small muted' }, 'Volumen (sigue la curva)'), vol,
+      h('div', { class: 'small muted' }, 'Altura (debe quedarse en la nota)'), canvas, h('div', { class: 'grow' })));
+    const roll = new Roll(canvas, { span: secs + 2, nowFrac: 0.9 });
+    roll.setRange(target - 4, target + 4);
+    roll.targets = [{ t0: -100, t1: 1e9, m0: target, m1: target }];
+    setCoach('Escucha la nota…', 'canta');
+    playNote(target, c.currentTime + 0.05, 1.2, 0.28);
+    await sleep(1450);
+    setCoach(shape === 'decresc' ? 'Empieza con voz llena y ve apagando, sin que la nota se caiga.' : 'Empieza suave, como un susurro con nota, y sigue la curva.', 'atento');
+    resetSmoother();
+    const g = vol.getContext('2d');
+    const DB0 = -48, DB1 = -12; // ventana de dibujo (dBFS)
+    const yOf = (db) => 1 - Math.max(0, Math.min(1, (db - DB0) / (DB1 - DB0)));
+    const fr = []; let started = null; const tStart = c.currentTime;
+    const drawVol = (el) => {
+      const r = vol.getBoundingClientRect(); const dpr = devicePixelRatio || 1;
+      if (vol.width !== Math.round(r.width * dpr)) { vol.width = r.width * dpr; vol.height = r.height * dpr; }
+      g.setTransform(dpr, 0, 0, dpr, 0, 0); g.clearRect(0, 0, r.width, r.height);
+      const cs = getComputedStyle(vol); const cv = (n) => cs.getPropertyValue(n).trim();
+      g.fillStyle = cv('--roll-alt'); g.fillRect(0, 0, r.width, r.height);
+      // banda guía (forma relativa: de "suave" a "fuerte")
+      g.beginPath();
+      for (let k = 0; k <= 60; k++) { const x = k / 60; const y = 0.85 - f(x) * 0.65; k ? g.lineTo(x * r.width, y * r.height) : g.moveTo(0, y * r.height); }
+      g.strokeStyle = cv('--demo'); g.lineWidth = 14; g.lineCap = 'round'; g.stroke();
+      // tu volumen
+      g.beginPath(); let first = true;
+      for (const p of fr) { const x = (p.t / secs) * r.width; const y = yOf(p.db) * r.height; first ? g.moveTo(x, y) : g.lineTo(x, y); first = false; }
+      g.strokeStyle = cv('--voice'); g.lineWidth = 3; g.stroke();
+      if (el != null) { g.fillStyle = cv('--now'); g.fillRect((el / secs) * r.width, 0, 2, r.height); }
+    };
+    let sm = -60;
+    while (!sig.aborted) {
+      const now = c.currentTime;
+      const p = readPitch();
+      const db = 20 * Math.log10(Math.max(1e-5, p.rms));
+      sm = sm * 0.7 + db * 0.3;
+      const cents = p.midi != null ? (p.midi - target) * 100 : null;
+      if (started == null && cents != null && Math.abs(cents) < 150) started = now;
+      let el = null;
+      if (started != null) {
+        el = now - started;
+        fr.push({ t: el, db: sm, cents });
+        if (el >= secs) break;
+      }
+      if (started == null && now - tStart > 10) break;
+      roll.addUser(now, p.midi, cents == null ? null : Math.abs(cents) <= tol / 2);
+      roll.draw(now); drawVol(el);
+      await raf();
+    }
+    roll.destroy();
+    const v = fr.filter((x) => x.t > 0.2);
+    const voiced = v.filter((x) => x.cents != null && Math.abs(x.cents) < 150);
+    if (voiced.length < 15) { per.push(0); details.push('no te escuché sostener la nota'); continue; }
+    // forma: correlación entre tu curva de volumen (dB) y la forma pedida
+    const xs = v.map((x) => f(Math.min(1, x.t / secs))), ys = v.map((x) => x.db);
+    const mx = xs.reduce((a, b) => a + b, 0) / xs.length, my = ys.reduce((a, b) => a + b, 0) / ys.length;
+    let sxy = 0, sxx = 0, syy = 0;
+    for (let k = 0; k < xs.length; k++) { sxy += (xs[k] - mx) * (ys[k] - my); sxx += (xs[k] - mx) ** 2; syy += (ys[k] - my) ** 2; }
+    const corr = sxx && syy ? sxy / Math.sqrt(sxx * syy) : 0;
+    const sorted = [...ys].sort((a, b) => a - b);
+    const range = sorted[Math.floor(sorted.length * 0.9)] - sorted[Math.floor(sorted.length * 0.1)];
+    // altura: en zona y sin deriva con el volumen
+    const inT = voiced.filter((x) => Math.abs(x.cents) <= tol / 2).length / voiced.length;
+    const loud = voiced.filter((x) => f(Math.min(1, x.t / secs)) > 0.7), soft = voiced.filter((x) => f(Math.min(1, x.t / secs)) < 0.3);
+    const avg = (a) => a.reduce((s2, x) => s2 + x.cents, 0) / a.length;
+    const drift = loud.length > 5 && soft.length > 5 ? avg(loud) - avg(soft) : 0;
+    if (drift > 20) sharpCresc++;
+    if (drift < -20) flatSoft++;
+    if (range < 6) smallRange++;
+    const sShape = Math.max(0, corr), sRange = Math.min(1, range / 12), sPitch = Math.min(1, inT / 0.8);
+    per.push(0.45 * sPitch + 0.35 * sShape * (range >= 4 ? 1 : 0.4) + 0.2 * sRange);
+    details.push(`volumen ${Math.round(range)} dB de diferencia, forma ${corr > 0.7 ? 'muy bien seguida' : corr > 0.4 ? 'más o menos seguida' : 'poco parecida a la curva'}, ${Math.round(inT * 100)}% del tiempo afinado` + (Math.abs(drift) > 20 ? `, la altura ${drift > 0 ? 'subió' : 'bajó'} ≈${Math.round(Math.abs(drift))} cents al ${drift > 0 ? 'crecer' : 'apagar'}` : ''));
+    if (per[per.length - 1] > 0.7) sfx('ok');
+    await sleep(400);
+  }
+  if (sharpCresc) issues.push({ key: 'sube_fuerte', voice: 'd_sube_fuerte', weight: 60, text: 'Al subir el volumen, <b>la nota se te sube</b>.', tip: 'Más aire, no más presión de garganta. Piensa la nota un poquito más abajo justo cuando creces.' });
+  if (flatSoft) issues.push({ key: 'cae', voice: 'd_baja_suave', weight: 55, text: 'Al cantar suave, <b>la nota se cae</b>.', tip: 'Suave no es sin apoyo: mantén las costillas abiertas aunque salga menos aire.' });
+  if (smallRange) issues.push({ key: 'dinamica', voice: 'd_dinamica', weight: 45, text: 'Tu volumen casi <b>no cambió</b>.', tip: 'Exagera: el comienzo casi un susurro con nota, el centro con voz llena. (Algunos celulares ajustan el volumen del micrófono solos; con audífonos con micrófono suele medirse mejor.)' });
+  issues.sort((a, b) => b.weight - a.weight);
+  const score = per.reduce((a, b) => a + b, 0) / Math.max(1, per.length);
+  return { score, issues, detail: details.map((d, k) => `Nota ${k + 1}: ${d}.`).join(' ') };
+}
+
+const RUNNERS = { info: runInfo, breath: runBreath, range: runRange, match: runMatch, seq: runSeq, ear: runEar, rhythm: runRhythm, sustain: runSustain, dynamics: runDynamics };

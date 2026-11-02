@@ -1,42 +1,17 @@
 // El Chincol: tu profe y compañero de práctica.
-// Dibuja la mascota, muestra sus mensajes y traduce tus mediciones en consejos concretos (como un profe particular).
+// Muestra la mascota, muestra sus mensajes y traduce tus mediciones en consejos concretos (como un profe particular).
 import { h, icon } from './ui.js';
 import { speak, stopSpeaking } from './voice.js';
 import { LINES } from './lines.js';
 
-// ---------- Mascota (SVG propio) ----------
-// mood: 'feliz' | 'canta' | 'piensa' | 'celebra' | 'atento'
+// ---------- Mascota: dibujos del Chincol (una pose por momento) ----------
+// mood: 'feliz' (confiado) | 'hola' (saluda) | 'atento' (escucha / canta) | 'canta' | 'piensa' (duda, consejo) | 'celebra' (pulgar arriba)
+const POSES = { feliz: 'feliz', hola: 'hola', atento: 'atento', canta: 'atento', piensa: 'piensa', celebra: 'celebra' };
+export const POSE_FILES = [...new Set(Object.values(POSES))].map(p => `img/chincol-${p}.webp`);
 export function chincol(mood = 'feliz', size = 64) {
-  const beakOpen = mood === 'canta' || mood === 'celebra';
-  const eyes = mood === 'feliz' || mood === 'celebra'
-    ? `<path d="M41 37 q4 -5 8 0" stroke="#231942" stroke-width="2.6" fill="none" stroke-linecap="round"/>`
-    : mood === 'piensa'
-      ? `<circle cx="46" cy="36" r="4.2" fill="#fff"/><circle cx="47.5" cy="34.6" r="2.2" fill="#231942"/>`
-      : `<circle cx="45" cy="37" r="4.4" fill="#fff"/><circle cx="46" cy="37.4" r="2.5" fill="#231942"/><circle cx="46.8" cy="36.4" r=".8" fill="#fff"/>`;
-  const beak = beakOpen
-    ? `<path d="M55 40 L66 37 L57 42 Z" fill="#5b4636"/><path d="M55 43 L65 46 L56 44.5 Z" fill="#5b4636"/>`
-    : `<path d="M55 40 L66 42 L55 44 Z" fill="#5b4636"/>`;
-  const note = mood === 'canta' || mood === 'celebra'
-    ? `<g fill="#6B4EFF"><ellipse cx="72" cy="27" rx="3.6" ry="2.8"/><rect x="74.6" y="12" width="1.8" height="15" rx=".9"/><path d="M76.4 12 q6 2 5 8 q-1 -4 -5 -4z"/></g>`
-    : mood === 'piensa' ? `<g fill="#B9AEE8"><circle cx="70" cy="18" r="2"/><circle cx="76" cy="12" r="3"/></g>` : '';
-  const wing = mood === 'celebra'
-    ? `<path d="M22 50 q-14 -14 -6 -26 q6 12 16 18z" fill="#8a6446"/>`
-    : `<path d="M22 52 q6 14 22 14 q-14 -2 -18 -16z" fill="#8a6446"/>`;
-  return h('span', { class: 'chincol ' + mood, style: `width:${size}px;height:${size}px`, 'aria-hidden': 'true', html:
-`<svg viewBox="0 0 84 84" width="${size}" height="${size}">
-  <ellipse cx="40" cy="78" rx="20" ry="3" fill="#231942" opacity=".08"/>
-  <path d="M30 70 l-3 8 M40 71 l1 8" stroke="#5b4636" stroke-width="2.4" stroke-linecap="round"/>
-  <ellipse cx="38" cy="52" rx="24" ry="21" fill="#a7774f"/>
-  <ellipse cx="44" cy="56" rx="14" ry="13" fill="#efe6d8"/>
-  ${wing}
-  <path d="M14 56 l-10 8 l12 -2z" fill="#7a5638"/>
-  <circle cx="46" cy="38" r="16" fill="#9aa0ab"/>
-  <path d="M33 30 q12 -12 26 -2" stroke="#2f2a3a" stroke-width="3.2" fill="none" stroke-linecap="round"/>
-  <path d="M34 42 q8 4 18 1" stroke="#2f2a3a" stroke-width="2.2" fill="none" stroke-linecap="round" opacity=".5"/>
-  <path d="M39 25 q-1 -8 5 -12 q0 5 1 7 q2 -6 8 -7 q-3 4 -3 9z" fill="#6f7480"/>
-  <path d="M31 46 q12 10 26 4 l-2 6 q-12 4 -24 -4z" fill="#c4672f"/>
-  ${eyes}${beak}${note}
-</svg>` });
+  const pose = POSES[mood] || 'feliz';
+  return h('span', { class: 'chincol ' + mood, style: `width:${size}px;height:${size}px`, 'aria-hidden': 'true' },
+    h('img', { src: `img/chincol-${pose}.webp`, alt: '', width: size, height: size, draggable: 'false', decoding: 'async' }));
 }
 
 // Globo de diálogo del Chincol
