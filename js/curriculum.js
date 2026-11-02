@@ -130,7 +130,7 @@ export const UNITS = [
     id: 'u4', title: 'Calentamiento SOVT', desc: 'Labios, pajita y "mmm": la voz eficiente',
     lessons: [
       { id: 'u4l1', title: 'Lip trill', build: () => [
-        info('Tracto vocal semiocluido (SOVT)', `<p>Los ejercicios con la boca <b>semicerrada</b> (vibrar los labios "brrr", cantar por una pajita, tararear "mmm" o "ng") son los más respaldados por la ciencia de la voz (Titze). Equilibran la presión del aire y hacen que la voz suene más con menos esfuerzo.</p><p>Seth Riggs los usaba con Michael Jackson y Stevie Wonder. Un estudio de 2025 encontró que la pajita y el lip trill ayudan igual.</p><p><b>Lip trill:</b> labios sueltos, sopla como imitando un motor "brrr" y ponle voz. Si no te sale, presiona suavemente las mejillas con los dedos.</p>`),
+        info('Tracto vocal semiocluido (SOVT)', `<p>Los ejercicios con la boca <b>semicerrada</b> (vibrar los labios "brrr", cantar por una pajita, tararear "mmm" o "ng") son los más respaldados por la ciencia de la voz (Titze). Equilibran la presión del aire y hacen que la voz suene más con menos esfuerzo.</p><p>El lip trill es un ejercicio central del método de Seth Riggs (profesor de Michael Jackson y Stevie Wonder). Un estudio pequeño de 2025 con cantantes encontró que la pajita y el lip trill mejoran por igual la facilidad para cantar.</p><p><b>Lip trill:</b> labios sueltos, sopla como imitando un motor "brrr" y ponle voz. Si no te sale, presiona suavemente las mejillas con los dedos.</p>`),
         seq([glide(0, 7, 2), glide(7, 0, 2)], { mode: 'along', bpm: 70, tol: 150, noTiming: true, reps: [0, 1, 2, 3], labels: 'none', text: 'Haz el lip trill "brrr" con voz siguiendo la sirena.' }),
       ] },
       { id: 'u4l2', title: 'Pajita en 1-3-5', build: () => [
@@ -153,6 +153,12 @@ export const UNITS = [
       { id: 'u5l3', title: 'Bajando', build: () => [
         seq(P([7, 5, 4, 2, [0, 2]]), { mode: 'echo', bpm: 85, tol: 80, ttol: 220, reps: [0, 1, 2], text: 'Al bajar, la tendencia es "caerse" (desafinar hacia abajo). Piensa cada nota un poquito más alta.' }),
         match([7, 5, 4, 2, 0], { tol: 70, hold: 1 }),
+      ] },
+      { id: 'u5l5', title: 'Mini melodías', build: () => [
+        info('Melodías de 4 notas', '<p>En el estudio de Berglin, Pfordresher y Demorest (2022), ver la afinación en vivo mejoró sobre todo las <b>melodías cortas de 4 notas</b>. Por eso las practicas desde ya. Son nuevas cada vez.</p>'),
+        seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 100, ttol: 250, labels: 'la' }),
+        seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 100, ttol: 250, labels: 'la' }),
+        seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 80, ttol: 220, labels: 'la' }),
       ] },
       { id: 'u5l4', title: 'Escala completa', build: () => [
         seq(P([0, 2, 4, 5, 7, 9, 11, 12, 11, 9, 7, 5, 4, 2, [0, 2]]), { mode: 'echo', bpm: 90, tol: 80, ttol: 200, reps: [0, 1] }),
@@ -181,7 +187,7 @@ export const UNITS = [
     id: 'u7', title: 'Afinación fina I', desc: 'No solo la nota: el centro de la nota',
     lessons: [
       { id: 'u7l1', title: 'Qué son los cents', build: () => [
-        info('Estar "en la nota" vs. estar afinado', `<p>Puedes estar en la nota correcta pero <b>un poquito bajo o alto</b>: eso suena "casi bien" y se nota. Un semitono son 100 cents. Un oído entrenado nota diferencias de 10–20 cents.</p><p>Desde ahora la zona verde se achica. La meta final de la app: <b>±10 cents</b>, nivel de cantante afinado.</p>`),
+        info('Estar "en la nota" vs. estar afinado', `<p>Puedes estar en la nota correcta pero <b>un poquito bajo o alto</b>: eso suena "casi bien" y se nota. Un semitono son 100 cents. En estudios, las personas sin entrenamiento empiezan distinguiendo diferencias de unos 12–30 cents, y con práctica bajan a pocos cents (Micheyl y cols., 2006). O sea: el oído fino también se entrena.</p><p>Desde ahora la zona verde se achica. La meta final de la app: <b>±10 cents</b>, nivel de cantante afinado.</p>`),
         match([0, 2, 4, 5], { tol: 50, hold: 1.5, text: 'Zona verde: ±25 cents. Mira la aguja y corrige con pequeños ajustes, no saltos.' }),
         ear('detune', { rounds: 8, cents: [60, 45, 35] }),
       ] },
@@ -190,7 +196,7 @@ export const UNITS = [
         match([0, 4, 7], { tol: 50, hold: 2.5 }),
       ] },
       { id: 'u7l3', title: 'Cantar sobre un bordón', build: () => [
-        info('El bordón (drone)', '<p>Suena una nota grave continua. Cantar sobre ella es como afinan los coros: cuando estás perfectamente afinado, el sonido se "funde" y deja de vibrar raro (desaparecen los batimientos). Escucha eso, no solo la aguja.</p>'),
+        info('El bordón (drone)', '<p>Suena una nota grave continua. Cuando cantas el unísono, la octava o la quinta perfectamente afinadas, el sonido se "funde" y desaparece ese vaivén de volumen (los <b>batimientos</b>). Escucha eso, no solo la aguja.</p><p>🎧 Este ejercicio necesita audífonos: si el micrófono escucha el bordón, lo confundiría con tu voz. La app lo revisa antes de empezar.</p>'),
         drone([0, 12, 7, 0], { tol: 50, hold: 2 }),
       ] },
       { id: 'u7l4', title: 'Oído fino', build: () => [
@@ -224,7 +230,7 @@ export const UNITS = [
     id: 'u9', title: 'Registros y rango', desc: 'Pecho, cabeza y el paso entre ellos',
     lessons: [
       { id: 'u9l1', title: 'Sirenas amplias', build: () => [
-        info('El "quiebre"', '<p>Al subir, la voz cambia de registro (pecho → cabeza) y a veces se "quiebra". El método de Seth Riggs y el de Estill trabajan esa zona con <b>sirenas suaves</b> y lip trills: sin empujar, dejando que la voz se aligere al subir. Mantén la laringe tranquila, como al hablar.</p><p>Además, entrenar en un <b>rango amplio</b> mejora más tu afinación general que practicar siempre las mismas notas (Pfordresher & Greenspon).</p>'),
+        info('El "quiebre"', '<p>Al subir, la voz cambia de registro (pecho → cabeza) y a veces se "quiebra". El método de Seth Riggs y el de Estill trabajan esa zona con <b>sirenas suaves</b> y lip trills: sin empujar, dejando que la voz se aligere al subir. Mantén la laringe tranquila, como al hablar.</p><p>Además, hay evidencia (aún parcial) de que entrenar en un <b>rango amplio</b> mejora más la afinación que practicar siempre en pocas notas (Pfordresher & Greenspon, 2024).</p>'),
         seq([glide(0, 12, 3), glide(12, 0, 3)], { mode: 'along', bpm: 70, tol: 150, noTiming: true, reps: [0, 1, 2], labels: 'none', wide: true, text: 'Sirena de una octava con lip trill o "ng" (como al final de "tengo"). Suave.' }),
       ] },
       { id: 'u9l2', title: '1-5-8-5-1', build: () => [
@@ -239,7 +245,7 @@ export const UNITS = [
     id: 'u10', title: 'Melodías', desc: 'De ejercicios a música',
     lessons: [
       { id: 'u10l1', title: 'Memoria melódica', build: () => [
-        info('Melodías cortas', '<p>Los estudios (protocolo SSAP) muestran que el entrenamiento con <b>melodías de 4 notas</b> es donde más mejora la afinación con retroalimentación visual. Cada vez que hagas esta lección, las melodías serán nuevas.</p>'),
+        info('Melodías cortas', '<p>En el estudio de Berglin, Pfordresher y Demorest (2022), la mejora con retroalimentación visual fue más clara en <b>melodías cortas de 4 notas</b> que en notas sueltas. Cada vez que hagas esta lección, las melodías serán nuevas.</p>'),
         seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 70, ttol: 200, labels: 'la' }),
         seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 70, ttol: 200, labels: 'la' }),
         seq(P(randomMelody(5)), { mode: 'echo', bpm: 85, tol: 70, ttol: 200, labels: 'la' }),
@@ -260,6 +266,7 @@ export const UNITS = [
     id: 'u11', title: 'Afinación fina II', desc: 'Afinar sin ayuda y con precisión',
     lessons: [
       { id: 'u11l1', title: 'Terceras y quintas sobre bordón', build: () => [
+        info('Afinación pura', '<p>Sobre una nota sostenida, el oído tiende a buscar la afinación "pura" de los intervalos: la <b>tercera mayor</b> pura queda unos <b>14 cents más baja</b> que en el piano, y la quinta casi igual (+2). Los estudios con cantantes muestran que en la práctica quedan entre ambas. La app acepta las dos.</p>'),
         drone([4, 7, 12, 4], { tol: 30, hold: 2 }),
       ] },
       { id: 'u11l2', title: 'Oído de 10–20 cents', build: () => [

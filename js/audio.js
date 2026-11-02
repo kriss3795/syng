@@ -14,7 +14,8 @@ export function latency() {
   const c = getCtx();
   const manual = Number(settings().latencyMs);
   if (manual > 0) return manual / 1000;
-  return (c.outputLatency || 0) + (c.baseLatency || 0) + 0.03;
+  // salida + entrada (~20 ms típicos) + medio cuadro de análisis (~32 ms)
+  return (c.outputLatency || 0) + (c.baseLatency || 0) + 0.055;
 }
 
 // ---------- Micrófono ----------
@@ -148,7 +149,7 @@ export function click(when, accent = false, gain = 0.3) {
   const c = getCtx();
   const t = Math.max(c.currentTime, when);
   const o = c.createOscillator(); o.type = 'square';
-  o.frequency.value = accent ? 1600 : 1000;
+  o.frequency.value = accent ? 2200 : 1600; // fuera del rango que analiza el detector (65–1100 Hz)
   const g = c.createGain();
   g.gain.setValueAtTime(gain, t); g.gain.exponentialRampToValueAtTime(0.001, t + 0.05);
   o.connect(g); g.connect(c.destination);
@@ -179,4 +180,31 @@ export async function decodeFile(blob) {
   const buf = await blob.arrayBuffer();
   const c = getCtx();
   return await c.decodeAudioData(buf);
+}
+
+// Calibración por "lazo": suena una nota por el parlante y medimos cuándo la detecta el micrófono.
+// Mide exactamente el retraso total de la cadena que usan los ejercicios (sin audífonos).
+export async function measureLatency(onStatus) {
+  const c = getCtx();
+  await startMic();
+  const results = [];
+  for (let i = 0; i < 6; i++) {
+    onStatus && onStatus(`Medición ${i + 1}/6…`);
+    resetSmoother();
+    await new Promise((r) => setTimeout(r, 400));
+    const at = c.currentTime + 0.15;
+    playNote(57, at, 0.5, 0.5);
+    let found = null;
+    const until = at + 0.9;
+    while (c.currentTime < until) {
+      const p = readPitch();
+      if (found == null && p.raw != null && Math.abs(p.raw - 57) < 0.5) found = c.currentTime - at;
+      await new Promise((r) => requestAnimationFrame(r));
+    }
+    if (found != null) results.push(found);
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  if (results.length < 4) return null;
+  results.sort((a, b) => a - b);
+  return results[Math.floor(results.length / 2)];
 }

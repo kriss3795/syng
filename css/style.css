@@ -119,3 +119,34 @@ input[type=range] { accent-color: var(--primary); }
 .key.comfort { outline: 3px solid var(--primary); }
 
 .toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 10px 16px; border-radius: 10px; z-index: 10; font-size: 14px; }
+
+/* ---------- Celular ---------- */
+html { -webkit-text-size-adjust: 100%; }
+body { overscroll-behavior-y: none; -webkit-tap-highlight-color: transparent; }
+button, a, select, input { touch-action: manipulation; }
+header { padding-top: calc(10px + env(safe-area-inset-top)); padding-left: calc(16px + env(safe-area-inset-left)); padding-right: calc(16px + env(safe-area-inset-right)); }
+nav { padding-bottom: env(safe-area-inset-bottom); }
+nav a { min-height: 56px; }
+main { padding-bottom: calc(96px + env(safe-area-inset-bottom)); }
+select, input[type=text], input[type=number], textarea { font-size: 16px; } /* evita el zoom automático en iPhone */
+select { padding: 8px; border: 1px solid var(--line); border-radius: 10px; background: #fff; color: var(--text); max-width: 100%; }
+.btn { min-height: 46px; }
+.lesson { min-height: 60px; }
+canvas.roll { height: min(260px, 36vh); }
+canvas.roll.song { height: min(240px, 30vh); }
+.row .btn.primary { flex: 1 1 auto; }
+.result .row .btn, .card.center .row .btn { flex: 1 1 0; }
+.karaoke .row .btn { flex: 1 1 0; padding-left: 6px; padding-right: 6px; }
+.karaoke label.row select { flex: 1; }
+.karaoke label.row input[type=range] { flex: 1; }
+.tap-pad, .btn, .lesson, nav a { user-select: none; -webkit-user-select: none; }
+.install { border-color: var(--primary); }
+.btn.small { min-height: 36px; padding: 6px 10px; font-size: 13px; }
+@media (max-width: 380px) {
+  body { font-size: 15px; }
+  .bignote, .bigscore { font-size: 38px; }
+  .lyr-cur { font-size: 21px; }
+  .karaoke.party .lyr-cur { font-size: 28px; }
+  .card { padding: 12px; }
+}
+@media (display-mode: standalone) { header { position: sticky; } }

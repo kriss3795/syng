@@ -1,8 +1,8 @@
 import { h, Roll, tuner, pct, sleep } from './ui.js';
 import { UNITS, ALL_LESSONS, warmup, extraSession } from './curriculum.js';
-import { run, voiceType } from './exercises.js';
+import { run } from './exercises.js';
 import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today } from './store.js';
-import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome } from './audio.js';
+import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
 import { noteName } from './pitch.js';
 import { songsView, newSongView, songDetail, practiceView, syncView } from './songs.js';
 import { getSong } from './store.js';
@@ -11,6 +11,12 @@ const view = document.getElementById('view');
 const hdr = document.getElementById('hdr-stats');
 let sig = { aborted: false };
 let metro = null;
+
+// Mantener la pantalla encendida mientras se practica
+let wake = null;
+async function keepAwake() { try { if ('wakeLock' in navigator && !wake) wake = await navigator.wakeLock.request('screen'); wake && wake.addEventListener('release', () => (wake = null)); } catch (e) {} }
+function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = null; }
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && /leccion|calentamiento|extra|practicar-|afinador|rango/.test(location.hash)) keepAwake(); });
 
 function nav(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 window.addEventListener('hashchange', route);
@@ -25,6 +31,7 @@ async function route() {
   sig = { aborted: false };
   if (metro) { metro.stop(); metro = null; }
   stopMic();
+  releaseWake();
   window.scrollTo(0, 0);
   renderHeader();
   const hsh = (location.hash || '#aprender').slice(1);
@@ -45,6 +52,7 @@ async function route() {
     if (hsh === 'canciones') return songsView(view, nav);
     if (hsh === 'cancion-nueva') return newSongView(view, nav);
     if (hsh.startsWith('cancion-')) return songDetail(view, nav, hsh.slice(8));
+    if (/^(leccion|calentamiento|extra|practicar-|afinador|rango|fiesta)/.test(hsh)) keepAwake();
     if (hsh.startsWith('practicar-')) return practiceView(view, nav, hsh.slice(10), sig, false);
     if (hsh.startsWith('fiesta-')) return practiceView(view, nav, hsh.slice(7), sig, true);
     if (hsh.startsWith('sincronizar-')) return syncView(view, nav, hsh.slice(12), sig);
@@ -78,6 +86,12 @@ function learnView() {
     h('div', { class: 'row' },
       nextIdx >= 0 ? h('button', { class: 'btn primary', onclick: () => nav('#leccion-' + ALL_LESSONS[nextIdx].id) }, '▶ Continuar: ' + ALL_LESSONS[nextIdx].title) : h('b', {}, '¡Completaste todo el camino! 🏆'),
       h('button', { class: 'btn', onclick: () => nav('#calentamiento') }, '🔥 Calentamiento')));
+  const weak = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && lessonState(l.id).best < 0.85 && !l.build.toString().includes("type: 'range'"))
+    .sort((a, b) => lessonState(a.id).best - lessonState(b.id).best)[0];
+  const review = weak ? h('div', { class: 'card' },
+    h('b', {}, '🔁 Repaso del día'),
+    h('p', { class: 'muted small' }, `Tu lección más floja: "${weak.title}" (mejor resultado ${pct(lessonState(weak.id).best)}). Repasar lo que cuesta es lo que más hace avanzar.`),
+    h('button', { class: 'btn', onclick: () => nav('#leccion-' + weak.id) }, 'Repasar')) : null;
   let gi = 0;
   const units = UNITS.map((u) => {
     const ls = u.lessons.map((l) => {
@@ -91,7 +105,7 @@ function learnView() {
     });
     return h('section', { class: 'unit' }, h('h3', {}, u.title), h('p', { class: 'muted small' }, u.desc), h('div', { class: 'lessons' }, ls));
   });
-  view.replaceChildren(top, ...units);
+  view.replaceChildren(...[installBanner(), top, review, ...units].filter(Boolean));
 }
 function flash(msg) {
   const t = h('div', { class: 'toast' }, msg);
@@ -104,7 +118,17 @@ function lessonView(id) {
   const idx = ALL_LESSONS.findIndex((l) => l.id === id);
   if (idx < 0) return nav('#aprender');
   const l = ALL_LESSONS[idx];
-  return sessionView(l.unit.title + ' · ' + l.title, l.build(), id, ALL_LESSONS[idx + 1]);
+  const unitIdx = UNITS.indexOf(l.unit);
+  const go = (pre) => sessionView(l.unit.title + ' · ' + l.title, [...pre, ...l.build()], id, ALL_LESSONS[idx + 1]);
+  if (unitIdx >= 2 && load().lastWarmup !== today()) {
+    view.replaceChildren(h('div', { class: 'card' },
+      h('h3', {}, '¿Calentaste hoy?'),
+      h('p', {}, 'Todos los métodos serios (Riggs, Estill, CVT, profesores de coro) parten con un calentamiento: aire → lip trill o "mmm" → sirenas → escalas suaves. Prepara la voz y evita forzarla.'),
+      h('button', { class: 'btn primary big', onclick: () => go(warmup().map((e) => ({ ...e, noScore: true }))) }, '🔥 Calentar primero (≈6 min) y luego la lección'),
+      h('button', { class: 'btn big', onclick: () => { load().lastWarmup = today(); save(); go([]); } }, 'Ya calenté, ir a la lección')));
+    return;
+  }
+  return go([]);
 }
 
 async function sessionView(title, exercises, id, nextLesson) {
@@ -122,7 +146,7 @@ async function sessionView(title, exercises, id, nextLesson) {
     while (true) {
       res = await run(ex, stage, mySig);
       if (mySig.aborted) return;
-      if (res.info) break;
+      if (res.info || res.skipped) break;
       // mostrar resultado honesto del ejercicio
       const decision = await new Promise((resolve) => {
         const good = res.score >= 0.7;
@@ -137,13 +161,14 @@ async function sessionView(title, exercises, id, nextLesson) {
       });
       if (decision === 'next') break;
     }
-    if (!res.info) {
+    if (!res.info && !res.skipped && !ex.noScore) {
       scores.push(res.score);
       if (res.cents != null) metrics.cents.push(res.cents);
       if (res.timing != null) metrics.timing.push(res.timing);
     }
   }
   bar.firstChild.style.width = '100%';
+  if (id === 'warmup' || exercises.some((e) => e.noScore)) { load().lastWarmup = today(); save(); }
   const score = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 1;
   const avgC = metrics.cents.length ? metrics.cents.reduce((a, b) => a + b, 0) / metrics.cents.length : null;
   record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null });
@@ -257,24 +282,60 @@ function profileView() {
   timbre.value = st.timbre; timbre.onchange = () => setSetting('timbre', timbre.value);
   const lat = h('input', { type: 'number', min: 0, max: 500, value: st.latencyMs || 0 });
   lat.onchange = () => setSetting('latencyMs', Number(lat.value));
+  const calibMsg = h('span', { class: 'muted small' });
+  const calibBtn = h('button', { class: 'btn' }, '📏 Medir latencia automáticamente');
+  calibBtn.onclick = async () => {
+    calibBtn.disabled = true;
+    try {
+      const v = await measureLatency((m) => (calibMsg.textContent = m));
+      if (v == null) calibMsg.textContent = 'No pude medir: quita los audífonos, sube el volumen y repite en silencio.';
+      else { const ms = Math.round(v * 1000); setSetting('latencyMs', ms); lat.value = ms; calibMsg.textContent = `Listo: ${ms} ms. Se usará para medir tus entradas a tiempo.`; }
+    } catch (e) { calibMsg.textContent = 'Permite el micrófono para medir.'; }
+    stopMic(); calibBtn.disabled = false;
+  };
+  const calib = h('div', { class: 'card inner' }, h('p', { class: 'small' }, 'Sirve para que la app mida bien si entras a tiempo. <b>Sin audífonos</b> y con volumen medio: la app emite 6 notas y mide cuánto tardan en llegar al micrófono.'.replace(/<\/?b>/g, '')), calibBtn, calibMsg,
+    h('p', { class: 'muted small' }, 'Si usas audífonos Bluetooth, el retraso es mayor y no se puede medir así: usa audífonos con cable para los ejercicios de ritmo.'));
   const reset = h('button', { class: 'btn ghost danger' }, 'Borrar todo mi progreso');
   reset.onclick = () => { if (reset.dataset.sure) { resetAll(); nav('#aprender'); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar'; } };
-  view.replaceChildren(
+  view.replaceChildren(...[
+    installBanner(true),
     h('div', { class: 'card' }, h('h2', {}, 'Tu progreso'),
       h('div', { class: 'stats' }, h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'Racha'), h('b', {}, (s.streak || 0) + ' días')),
         h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'XP'), h('b', {}, s.xp)),
         h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'Lecciones'), h('b', {}, `${done}/${ALL_LESSONS.length}`))),
-      h('p', {}, r.guessed ? 'Rango: sin medir' : `Rango: ${noteName(r.low)}–${noteName(r.high)} · zona central ${noteName(r.comfort)} · ${voiceType(r.low, r.high)}`),
+      h('p', {}, r.guessed ? 'Rango: sin medir' : `Rango: ${noteName(r.low)}–${noteName(r.high)} · zona central ${noteName(r.comfort)}`),
       h('p', { class: 'muted small' }, trend)),
     h('div', { class: 'card form' }, h('h3', {}, 'Ajustes'),
       h('label', {}, 'Sonido de las notas guía', timbre),
       chk('octaveFree', 'En canciones, aceptar cantar una octava arriba/abajo'),
       chk('echoCancel', 'Cancelación de eco del micrófono (actívala solo si cantas sin audífonos y la música confunde al detector)'),
-      h('label', {}, 'Compensación de latencia (ms, 0 = automática). Si en ritmo siempre sale que entras tarde, súbela de a 20.', lat),
+      h('label', {}, 'Compensación de latencia (ms, 0 = automática)', lat),
+      calib,
       reset),
     h('div', { class: 'card small muted', html: `<b>Basado en:</b> Pfordresher & Brown 2007; Hutchins & Peretz 2012; Berglin, Pfordresher & Demorest 2022 (retroalimentación visual); Pfordresher & Greenspon 2024 (rango amplio); Titze 2006 y estudios de pajita/lip trill (SOVT); principios de aprendizaje motor (Maas 2008, NATS Journal of Singing); métodos de Seth Riggs (SLS), Cathrine Sadolin (CVT), Jo Estill y Cheryl Porter. Detección de tono: McLeod Pitch Method.` }),
-  );
+  ].filter(Boolean));
 }
+
+// ---------- Instalar como app ----------
+let deferredPrompt = null;
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (/aprender|perfil|^#?$/.test(location.hash)) route(); });
+const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+function installBanner(force = false) {
+  if (standalone()) return force ? h('p', { class: 'muted small' }, '✅ Ya estás usando la app instalada.') : null;
+  if (!force && localStorage.getItem('syng.hideInstall')) return null;
+  const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const close = force ? null : h('button', { class: 'btn ghost small', onclick: (e) => { localStorage.setItem('syng.hideInstall', 1); e.target.closest('.card').remove(); } }, 'Ocultar');
+  if (deferredPrompt) {
+    return h('div', { class: 'card install' }, h('b', {}, '📲 Instala Syng en tu celular'),
+      h('p', { class: 'muted small' }, 'Queda como una app más, a pantalla completa y funciona sin internet (menos la primera carga).'),
+      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; route(); } }, 'Instalar'), close));
+  }
+  return h('div', { class: 'card install' }, h('b', {}, '📲 Instala Syng en tu celular'),
+    h('p', { class: 'small' }, ios
+      ? 'En iPhone: abre esta página en Safari, toca el botón Compartir (cuadro con flecha ↑) y elige "Agregar a inicio".'
+      : 'En Android: abre el menú ⋮ de Chrome y elige "Instalar app" o "Agregar a la pantalla principal".'), close);
+}
+if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
 // arrancar el audio con el primer toque (requisito de los navegadores)
 document.addEventListener('pointerdown', () => getCtx(), { once: true });

@@ -3,6 +3,7 @@ import { h, Roll, pct, sleep } from './ui.js';
 import { getCtx, startMic, readPitch, resetSmoother, latency, decodeFile, micStream } from './audio.js';
 import { noteName } from './pitch.js';
 import { analyzeSong, parseLyrics, autoAlign, wordTimes } from './analysis.js';
+import { leakCheck } from './exercises.js';
 import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record } from './store.js';
 
 const cache = new Map(); // id -> {mix, inst} AudioBuffers
@@ -11,7 +12,7 @@ export async function songsView(root, nav) {
   root.replaceChildren(h('div', { class: 'card' }, 'Cargando…'));
   let list = [];
   try { list = await listSongs(); } catch (e) { root.replaceChildren(h('div', { class: 'card warnbox' }, 'Tu navegador no permite guardar canciones (IndexedDB). Prueba con Chrome o sin modo incógnito.')); return; }
-  root.replaceChildren(
+  root.replaceChildren(...[
     h('div', { class: 'card' },
       h('h2', {}, 'Tus canciones'),
       h('p', { class: 'muted' }, 'Sube tu canción de Suno con voz + la versión instrumental + la letra. La app detecta la melodía nota por nota y te deja practicarla como karaoke, con afinador.'),
@@ -21,7 +22,7 @@ export async function songsView(root, nav) {
         `${fmtTime(s.analysis.duration)} · ${s.analysis.key} · ${s.analysis.notes.length} notas · ${s.analysis.lines.length} líneas`)),
       h('span', { class: 'chev' }, '›'))),
     list.length ? null : h('p', { class: 'muted center' }, 'Aún no tienes canciones.'),
-  );
+  ].filter(Boolean));
 }
 
 const fmtTime = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -164,7 +165,7 @@ export async function practiceView(root, nav, id, sig, party = false) {
     ...[[100, 'Fácil (±50 cents)'], [70, 'Normal (±35)'], [40, 'Exigente (±20)'], [20, 'Maestro (±10)']].map(([v, l]) => h('option', { value: v, selected: Number(st.songTol) === v ? '' : null }, l)));
   tolSel.onchange = () => setSetting('songTol', Number(tolSel.value));
   const guide = h('input', { type: 'range', min: 0, max: 100, value: bufs.inst ? 30 : 100, disabled: bufs.inst ? null : '' });
-  guide.oninput = () => player.setGuide(guide.value / 100);
+  guide.oninput = () => { if (speakerMode && !party) { guide.value = 0; return; } player.setGuide(guide.value / 100); };
   player.setGuide(guide.value / 100);
   const playBtn = h('button', { class: 'btn primary' }, '▶ Cantar');
   const restart = h('button', { class: 'btn' }, '⏮');
@@ -197,6 +198,7 @@ export async function practiceView(root, nav, id, sig, party = false) {
   let rec = null, recChunks = [], recStartPos = 0, lastTake = null;
   let micOk = false;
   let shift = 0;
+  let leakChecked = false, speakerMode = false;
 
   const lineAt = (t) => { let idx = -1; for (let i = 0; i < lines.length; i++) if (t >= lines[i].t0 - 0.3) idx = i; return idx; };
   const renderLyrics = (t) => {
@@ -259,6 +261,16 @@ export async function practiceView(root, nav, id, sig, party = false) {
   const startPlay = async (pos) => {
     if (!party && !micOk) {
       try { await startMic(); micOk = true; } catch (e) { live.textContent = 'Sin micrófono: solo karaoke (sin evaluación).'; }
+    }
+    if (!party && micOk && !leakChecked) {
+      leakChecked = true;
+      live.textContent = 'Revisando audífonos… (silencio un segundo)';
+      if (await leakCheck(a.notes[Math.floor(a.notes.length / 2)].m)) {
+        speakerMode = true;
+        guide.value = 0; player.setGuide(0);
+        headTip.textContent = '🔈 Estás sin audífonos: bajé la voz guía a 0% porque el micrófono la confundiría con tu voz. Aun así la música del parlante puede afectar la detección: con audífonos el puntaje es más confiable.';
+        headTip.className = 'warnbox small';
+      }
     }
     resetSmoother();
     if (pos <= 0.5) for (const x of targets) { x.frames = []; x.result = null; }
@@ -337,7 +349,7 @@ export async function practiceView(root, nav, id, sig, party = false) {
       h('h3', {}, 'Resultado'),
       h('div', { class: 'stats' }, stat('Notas afinadas', pct(score)), stat('Desviación al acercarte', avgC != null ? Math.round(avgC) + ' cents' : '—'),
         stat('Entrada', tAvg == null ? '—' : Math.abs(tAvg) < 0.07 ? 'a tiempo' : Math.round(tAvg * 1000) + ' ms tarde')),
-      h('p', { class: 'muted small' }, honest(score, avgC)),
+      h('p', { class: 'muted small' }, honest(score, avgC) + (speakerMode ? ' (Cantaste sin audífonos: toma este resultado como aproximado.)' : '')),
       lineScores.length ? h('div', {}, h('b', {}, 'Practica estas líneas:'),
         ...lineScores.map((x) => h('button', { class: 'btn line', onclick: () => { loop = { t0: Math.max(0, lines[x.i].t0 - 1), t1: lines[x.i].t1 + 0.4 }; loopBtn.classList.add('on'); loopBtn.textContent = '🔁 Línea ' + (x.i + 1) + ' (quitar)'; startPlay(loop.t0); } },
           `${pct(x.r)} · ${lines[x.i].text}`))) : null));
