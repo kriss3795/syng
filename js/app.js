@@ -1,50 +1,57 @@
-import { h, Roll, tuner, pct, sleep } from './ui.js';
-import { UNITS, ALL_LESSONS, warmup, extraSession } from './curriculum.js';
+import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
+import { UNITS, ALL_LESSONS, warmup, extraSession, recommend } from './curriculum.js';
 import { run } from './exercises.js';
-import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today } from './store.js';
+import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong } from './store.js';
 import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
 import { noteName } from './pitch.js';
-import { songsView, newSongView, songDetail, practiceView, syncView } from './songs.js';
-import { getSong } from './store.js';
+import { songsView, newSongView, songDetail, practiceView, syncView, linesView } from './songs.js';
+import { say, chincol, verdict, line, tipOfDay } from './coach.js';
+import { speak, stopSpeaking, sfx, confetti } from './voice.js';
 
 const view = document.getElementById('view');
 const hdr = document.getElementById('hdr-stats');
 let sig = { aborted: false };
 let metro = null;
 
-// Mantener la pantalla encendida mientras se practica
+// ---------- Pantalla encendida ----------
 let wake = null;
-async function keepAwake() { try { if ('wakeLock' in navigator && !wake) wake = await navigator.wakeLock.request('screen'); wake && wake.addEventListener('release', () => (wake = null)); } catch (e) {} }
+async function keepAwake() { try { if ('wakeLock' in navigator && !wake) { wake = await navigator.wakeLock.request('screen'); wake.addEventListener('release', () => (wake = null)); } } catch (e) {} }
 function releaseWake() { try { wake && wake.release(); } catch (e) {} wake = null; }
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && /leccion|calentamiento|extra|practicar-|afinador|rango/.test(location.hash)) keepAwake(); });
 
 function nav(hash) { if (location.hash === hash) route(); else location.hash = hash; }
 window.addEventListener('hashchange', route);
 
 function renderHeader() {
   const s = load();
-  hdr.textContent = `🔥 ${s.streak || 0}  ·  ⭐ ${s.xp} XP`;
+  hdr.replaceChildren(
+    h('span', { class: 'stat-chip flame' + (s.lastDay === today() ? ' lit' : '') }, icon('flame', 18), String(s.streak || 0)),
+    h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)));
 }
 
+const FOCUS = /^(leccion|hoy|calentamiento|extra|rango|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
+  stopSpeaking();
   if (metro) { metro.stop(); metro = null; }
   stopMic();
   releaseWake();
   window.scrollTo(0, 0);
   renderHeader();
   const hsh = (location.hash || '#aprender').slice(1);
-  const tab = /^(cancion|practicar-|fiesta-|sincronizar-|editarletra-)/.test(hsh) || hsh === 'canciones' ? 'cancion'
+  document.body.classList.toggle('focus', FOCUS.test(hsh));
+  const tab = /^(cancion|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-|editarletra-)/.test(hsh) ? 'cancion'
     : /^(practicar|afinador|teclado|metronomo|extra-|calentamiento|rango)/.test(hsh) ? 'practicar'
     : hsh === 'perfil' ? 'perfil' : 'aprender';
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
+  if (FOCUS.test(hsh) || hsh === 'afinador') keepAwake();
   try {
-    if (hsh === 'aprender' || hsh === '') return learnView();
-    if (hsh.startsWith('leccion-')) return lessonView(hsh.slice(8));
-    if (hsh === 'calentamiento') return sessionView('Calentamiento diario', warmup(), 'warmup');
-    if (hsh.startsWith('extra-')) return sessionView(EXTRA[hsh.slice(6)] || 'Práctica', extraSession(hsh.slice(6)), 'extra-' + hsh.slice(6));
-    if (hsh === 'rango') return sessionView('Test de rango', [{ type: 'range' }], 'range');
+    if (hsh === 'aprender' || hsh === '') return homeView();
+    if (hsh === 'hoy') return todayClass();
+    if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
+    if (hsh === 'calentamiento') return session({ title: 'Calentamiento', color: 'orange', exercises: warmup(), id: 'warmup' });
+    if (hsh.startsWith('extra-')) return session({ title: EXTRA[hsh.slice(6)] || 'Práctica', color: 'blue', exercises: extraSession(hsh.slice(6)), id: 'extra-' + hsh.slice(6) });
+    if (hsh === 'rango') return session({ title: 'Medir mi rango', color: 'violet', exercises: [{ type: 'range' }], id: 'range' });
     if (hsh === 'practicar') return gymView();
     if (hsh === 'afinador') return freeTuner();
     if (hsh === 'teclado') return keyboardView();
@@ -52,162 +59,244 @@ async function route() {
     if (hsh === 'canciones') return songsView(view, nav);
     if (hsh === 'cancion-nueva') return newSongView(view, nav);
     if (hsh.startsWith('cancion-')) return songDetail(view, nav, hsh.slice(8));
-    if (/^(leccion|calentamiento|extra|practicar-|afinador|rango|fiesta)/.test(hsh)) keepAwake();
-    if (hsh.startsWith('practicar-')) return practiceView(view, nav, hsh.slice(10), sig, false);
-    if (hsh.startsWith('fiesta-')) return practiceView(view, nav, hsh.slice(7), sig, true);
+    if (hsh.startsWith('escuchar-')) return practiceView(view, nav, hsh.slice(9), sig, 'escuchar');
+    if (hsh.startsWith('lineas-')) return linesView(view, nav, hsh.slice(7), sig);
+    if (hsh.startsWith('guia-')) return practiceView(view, nav, hsh.slice(5), sig, 'guia');
+    if (hsh.startsWith('solo-')) return practiceView(view, nav, hsh.slice(5), sig, 'solo');
+    if (hsh.startsWith('practicar-')) return practiceView(view, nav, hsh.slice(10), sig, 'libre');
+    if (hsh.startsWith('fiesta-')) return practiceView(view, nav, hsh.slice(7), sig, 'fiesta');
     if (hsh.startsWith('sincronizar-')) return syncView(view, nav, hsh.slice(12), sig);
     if (hsh.startsWith('editarletra-')) { const s = await getSong(hsh.slice(12)); return newSongView(view, nav, s); }
     if (hsh === 'perfil') return profileView();
-    return learnView();
+    return homeView();
   } catch (e) {
     console.error(e);
-    view.replaceChildren(h('div', { class: 'card warnbox' }, 'Algo falló: ' + e.message));
+    view.replaceChildren(h('div', { class: 'page' }, say('Algo falló: ' + e.message, 'piensa', { tone: 'warn' })));
   }
 }
 
-const EXTRA = { oido: 'Entrenamiento de oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango' };
+const EXTRA = { oido: 'Entrenar el oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango', aire: 'Aire parejo' };
 
-// ---------- Aprender (camino de lecciones) ----------
+// ---------- Inicio: clase de hoy + camino ----------
 function isUnlocked(idx) {
   if (idx === 0) return true;
-  const prev = ALL_LESSONS[idx - 1];
-  return !!(lessonState(prev.id) && lessonState(prev.id).done);
+  return !!lessonState(ALL_LESSONS[idx - 1].id)?.done;
 }
-function learnView() {
+function nextLessonIdx() { return ALL_LESSONS.findIndex((l, i) => isUnlocked(i) && !lessonState(l.id)?.done); }
+
+function homeView() {
   const s = load();
-  const r = getRange();
-  const doneCount = ALL_LESSONS.filter((l) => lessonState(l.id)?.done).length;
-  const nextIdx = ALL_LESSONS.findIndex((l, i) => isUnlocked(i) && !lessonState(l.id)?.done);
+  const nextIdx = nextLessonIdx();
+  const next = ALL_LESSONS[nextIdx];
   const goal = Math.min(1, (s.lastDay === today() ? s.todayXp || 0 : 0) / s.dailyGoal);
-  const top = h('div', { class: 'card' },
-    h('div', { class: 'row between' }, h('b', {}, 'Meta de hoy'), h('span', { class: 'muted small' }, `${doneCount}/${ALL_LESSONS.length} lecciones`)),
-    h('div', { class: 'progress' }, h('div', { class: 'pfill ok', style: `width:${goal * 100}%` })),
-    r.guessed ? h('p', { class: 'warnbox small' }, 'Aún no mediste tu rango. Empieza por la lección 1 para que los ejercicios queden a tu medida.') : null,
-    h('div', { class: 'row' },
-      nextIdx >= 0 ? h('button', { class: 'btn primary', onclick: () => nav('#leccion-' + ALL_LESSONS[nextIdx].id) }, '▶ Continuar: ' + ALL_LESSONS[nextIdx].title) : h('b', {}, '¡Completaste todo el camino! 🏆'),
-      h('button', { class: 'btn', onclick: () => nav('#calentamiento') }, '🔥 Calentamiento')));
-  const weak = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && lessonState(l.id).best < 0.85 && !l.build.toString().includes("type: 'range'"))
-    .sort((a, b) => lessonState(a.id).best - lessonState(b.id).best)[0];
-  const review = weak ? h('div', { class: 'card' },
-    h('b', {}, '🔁 Repaso del día'),
-    h('p', { class: 'muted small' }, `Tu lección más floja: "${weak.title}" (mejor resultado ${pct(lessonState(weak.id).best)}). Repasar lo que cuesta es lo que más hace avanzar.`),
-    h('button', { class: 'btn', onclick: () => nav('#leccion-' + weak.id) }, 'Repasar')) : null;
+  const first = !s.xp;
+  const greeting = first ? line('hola') : s.lastDay === today() ? '¡Bien, ya practicaste hoy! Si tienes ganas, sigue con otra clase.' : `¡Hola de nuevo! ${tipOfDay()}`;
+  const hero = h('section', { class: 'hero' },
+    say(greeting, first ? 'feliz' : 'canta', { voice: first ? 'hola' : null, autoplay: false }),
+    h('div', { class: 'hero-row' },
+      h('div', { class: 'goal' }, scoreRing(goal, 64), h('div', {}, h('b', {}, 'Meta de hoy'), h('div', { class: 'small muted' }, `${s.lastDay === today() ? s.todayXp || 0 : 0} de ${s.dailyGoal} XP`))),
+      next ? h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#hoy'); } }, icon('play', 18), 'Clase de hoy') : h('b', {}, '¡Terminaste el camino! 🏆')),
+    next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null);
+  const rec = recommend(s.history || []);
+  const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
+    chincol('piensa', 44),
+    h('div', {}, h('b', {}, 'Práctica recomendada: ' + EXTRA[rec.kind]), h('div', { class: 'small muted' }, 'Según tus últimos ejercicios, esto es lo que más te va a ayudar.')), icon('chevron')) : null;
   let gi = 0;
-  const units = UNITS.map((u) => {
-    const ls = u.lessons.map((l) => {
+  const path = UNITS.map((u) => {
+    const nodes = u.lessons.map((l, k) => {
       const idx = gi++;
       const st = lessonState(l.id);
       const un = isUnlocked(idx);
-      return h('button', { class: 'lesson' + (st?.done ? ' done' : '') + (un ? '' : ' locked') + (idx === nextIdx ? ' next' : ''),
-        onclick: () => (un ? nav('#leccion-' + l.id) : flash('Completa la lección anterior primero')) },
-        h('span', { class: 'dot' }, st?.done ? '★'.repeat(st.stars) : un ? '▶' : '🔒'),
-        h('span', {}, l.title));
+      const cur = idx === nextIdx;
+      const offset = [0, 1, 0, -1][k % 4];
+      return h('div', { class: 'node-wrap', style: `--off:${offset}` },
+        cur ? h('div', { class: 'node-tip' }, 'Empezar') : null,
+        h('button', { class: 'node ' + u.color + (st?.done ? ' done' : '') + (un ? '' : ' locked') + (cur ? ' current' : ''), 'aria-label': l.title,
+          onclick: () => { if (un) { sfx('select'); nav('#leccion-' + l.id); } else { sfx('bad'); flash('Completa la lección anterior primero'); } } },
+          icon(st?.done ? 'star' : un ? lessonIcon(l) : 'lock', 30)),
+        h('div', { class: 'node-label' }, l.title, st?.done ? h('span', { class: 'stars-mini' }, '★'.repeat(st.stars) + '☆'.repeat(3 - st.stars)) : null));
     });
-    return h('section', { class: 'unit' }, h('h3', {}, u.title), h('p', { class: 'muted small' }, u.desc), h('div', { class: 'lessons' }, ls));
+    return h('section', { class: 'unit ' + u.color },
+      h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
+      h('div', { class: 'path' }, nodes));
   });
-  view.replaceChildren(...[installBanner(), top, review, ...units].filter(Boolean));
+  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, recCard, ...path].filter(Boolean)));
+  const cur = view.querySelector('.node.current');
+  if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
+}
+function lessonIcon(l) {
+  const t = l.build.toString();
+  if (/range/.test(t)) return 'mic';
+  if (/rhythm\(/.test(t)) return 'drum';
+  if (/breath\(|sustain\(/.test(t)) return 'breath';
+  if (/ear\(/.test(t) && !/seq\(/.test(t)) return 'ear';
+  return 'note';
 }
 function flash(msg) {
   const t = h('div', { class: 'toast' }, msg);
   document.body.append(t);
-  setTimeout(() => t.remove(), 1800);
+  setTimeout(() => t.remove(), 1900);
 }
 
-// ---------- Reproductor de lecciones ----------
-function lessonView(id) {
+// Clase de hoy: calentamiento corto (si no calentó) + siguiente lección
+function todayClass() {
+  const idx = nextLessonIdx();
+  if (idx < 0) return nav('#practicar');
+  const l = ALL_LESSONS[idx];
+  const pre = load().lastWarmup === today() || UNITS.indexOf(l.unit) === 0 && idx < 2 ? [] : warmup(true).map((e) => ({ ...e, noScore: true }));
+  return session({ title: 'Clase de hoy · ' + l.title, color: l.unit.color, exercises: [...pre, ...l.build()], id: l.id, lesson: l, next: ALL_LESSONS[idx + 1], intro: l.intro, introVoice: l.introVoice });
+}
+
+function lessonIntro(id) {
   const idx = ALL_LESSONS.findIndex((l) => l.id === id);
   if (idx < 0) return nav('#aprender');
   const l = ALL_LESSONS[idx];
   const unitIdx = UNITS.indexOf(l.unit);
-  const go = (pre) => sessionView(l.unit.title + ' · ' + l.title, [...pre, ...l.build()], id, ALL_LESSONS[idx + 1]);
-  if (unitIdx >= 2 && load().lastWarmup !== today()) {
-    view.replaceChildren(h('div', { class: 'card' },
-      h('h3', {}, '¿Calentaste hoy?'),
-      h('p', {}, 'Todos los métodos serios (Riggs, Estill, CVT, profesores de coro) parten con un calentamiento: aire → lip trill o "mmm" → sirenas → escalas suaves. Prepara la voz y evita forzarla.'),
-      h('button', { class: 'btn primary big', onclick: () => go(warmup().map((e) => ({ ...e, noScore: true }))) }, '🔥 Calentar primero (≈6 min) y luego la lección'),
-      h('button', { class: 'btn big', onclick: () => { load().lastWarmup = today(); save(); go([]); } }, 'Ya calenté, ir a la lección')));
-    return;
-  }
-  return go([]);
+  const exs = l.build();
+  const needWarm = unitIdx >= 2 && load().lastWarmup !== today();
+  const warmChk = h('input', { type: 'checkbox' }); warmChk.checked = needWarm;
+  const nEx = exs.filter((e) => e.type !== 'info').length;
+  view.replaceChildren(h('div', { class: 'lesson-intro ' + l.unit.color },
+    h('div', { class: 'li-top' }, h('button', { class: 'iconbtn', onclick: () => nav('#aprender'), 'aria-label': 'Cerrar' }, icon('close')), h('span', { class: 'li-unit' }, l.unit.title)),
+    h('h1', {}, l.title),
+    say(l.intro || 'Vamos con esta clase.', 'feliz', { voice: l.introVoice }),
+    h('div', { class: 'li-meta' }, h('span', { class: 'pill' }, `${nEx} ejercicio${nEx === 1 ? '' : 's'}`), h('span', { class: 'pill' }, `≈ ${Math.max(2, Math.round(nEx * 1.5 + (warmChk.checked ? 2 : 0)))} min`), lessonState(id)?.done ? h('span', { class: 'pill ok' }, '★'.repeat(lessonState(id).stars)) : null),
+    unitIdx >= 2 ? h('label', { class: 'warm-toggle' }, warmChk, h('span', {}, h('b', {}, 'Calentar antes (2 min)'), h('br'), h('small', {}, needWarm ? 'Hoy no has calentado: te lo recomiendo.' : 'Ya calentaste hoy.'))) : null,
+    h('div', { class: 'grow' }),
+    h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => {
+      stopSpeaking(); sfx('select');
+      const pre = warmChk.checked ? warmup(true).map((e) => ({ ...e, noScore: true })) : [];
+      session({ title: l.title, color: l.unit.color, exercises: [...pre, ...exs], id: l.id, lesson: l, next: ALL_LESSONS[idx + 1] });
+    } }, 'Empezar'))));
 }
 
-async function sessionView(title, exercises, id, nextLesson) {
+// ---------- Sesión de ejercicios (lección, calentamiento o práctica) ----------
+async function session({ title, color, exercises, id, lesson, next, intro, introVoice }) {
   const mySig = sig;
-  const bar = h('div', { class: 'progress' }, h('div', { class: 'pfill' }));
-  const stage = h('div');
-  view.replaceChildren(h('div', { class: 'row between' }, h('b', {}, title), h('button', { class: 'btn ghost', onclick: () => nav('#aprender') }, '✕')), bar, stage);
-  const scores = [];
-  const metrics = { cents: [], timing: [] };
+  document.body.classList.add('focus');
+  const fill = h('div', { class: 'pfill' });
+  const stage = h('div', { class: 'stage' });
+  view.replaceChildren(h('div', { class: 'session ' + (color || '') },
+    h('div', { class: 'ses-top' },
+      h('button', { class: 'iconbtn', onclick: () => nav(lesson ? '#aprender' : '#practicar'), 'aria-label': 'Salir' }, icon('close')),
+      h('div', { class: 'progress big' }, fill),
+      h('button', { class: 'iconbtn', 'aria-label': 'Voz del Chincol', onclick: (e) => { const v = settings().voice === false; setSetting('voice', v); stopSpeaking(); e.currentTarget.classList.toggle('off', !v); } , class: 'iconbtn' + (settings().voice === false ? ' off' : '') }, icon('speaker'))),
+    stage));
+  if (intro) {
+    await new Promise((res) => stage.replaceChildren(h('div', { class: 'ex' }, say(intro, 'feliz', { voice: introVoice }), h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); res(); } }, 'Vamos')))));
+  }
+  const scores = [], metrics = { cents: [], timing: [] }, issueKeys = [];
+  let worst = null;
   for (let i = 0; i < exercises.length; i++) {
     if (mySig.aborted) return;
-    bar.firstChild.style.width = (i / exercises.length) * 100 + '%';
-    const ex = exercises[i];
-    let res;
+    fill.style.width = (i / exercises.length) * 100 + '%';
+    let ex = exercises[i];
+    let res, fails = 0, easier = false;
     while (true) {
       res = await run(ex, stage, mySig);
       if (mySig.aborted) return;
-      if (res.info || res.skipped) break;
-      // mostrar resultado honesto del ejercicio
-      const decision = await new Promise((resolve) => {
-        const good = res.score >= 0.7;
-        stage.replaceChildren(h('div', { class: 'card result ' + (good ? 'good' : 'meh') },
-          h('div', { class: 'bigscore' }, pct(res.score)),
-          h('p', {}, res.detail || ''),
-          res.keepView ? h('div', { class: 'keep' }, res.keepView) : null,
-          h('p', { class: 'muted small' }, good ? (res.score >= 0.95 ? 'Excelente.' : 'Bien. Puedes repetir para mejorar o seguir.') : 'Aún no está: repítelo. Escucha con atención antes de cantar y mira hacia dónde se va tu línea.'),
-          h('div', { class: 'row' },
-            h('button', { class: 'btn', onclick: () => resolve('again') }, '↻ Repetir'),
-            h('button', { class: 'btn primary', onclick: () => resolve('next') }, 'Continuar →'))));
-      });
+      if (res.info || res.skipped || ex.noScore) break;
+      if (res.score < 0.7) fails++;
+      const decision = await feedbackSheet(stage, res, { fails, easier, canEase: fails >= 2 && !easier && canMakeEasier(ex) });
       if (decision === 'next') break;
+      if (decision === 'easier') { ex = makeEasier(ex); easier = true; }
     }
     if (!res.info && !res.skipped && !ex.noScore) {
       scores.push(res.score);
       if (res.cents != null) metrics.cents.push(res.cents);
       if (res.timing != null) metrics.timing.push(res.timing);
+      (res.issues || []).slice(0, 2).forEach((x) => issueKeys.push(x.key));
+      if (res.issues && res.issues[0] && (!worst || res.score < worst.score)) worst = { score: res.score, issue: res.issues[0] };
     }
   }
-  bar.firstChild.style.width = '100%';
-  if (id === 'warmup' || exercises.some((e) => e.noScore)) { load().lastWarmup = today(); save(); }
+  fill.style.width = '100%';
+  if (exercises.some((e) => e.noScore) || id === 'warmup') { load().lastWarmup = today(); save(); }
   const score = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 1;
   const avgC = metrics.cents.length ? metrics.cents.reduce((a, b) => a + b, 0) / metrics.cents.length : null;
-  record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null });
+  const hadStreak = load().lastDay === today();
+  record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null, issues: issueKeys });
   let stars = null;
-  const isLesson = ALL_LESSONS.some((l) => l.id === id);
-  if (isLesson) stars = setLesson(id, score);
-  const xp = Math.round(5 + score * 15);
+  if (lesson) stars = setLesson(id, score);
+  const passed = !lesson || stars > 0;
+  const xp = passed ? Math.round(10 + score * 15) : 5;
   addXp(xp);
   renderHeader();
-  const passed = !isLesson || stars > 0;
-  stage.replaceChildren(h('div', { class: 'card center' },
-    h('h2', {}, passed ? (isLesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
-    isLesson ? h('div', { class: 'stars' }, stars > 0 ? '★'.repeat(stars) + '☆'.repeat(3 - stars) : '☆☆☆') : null,
-    h('div', { class: 'bigscore' }, pct(score)),
-    avgC != null ? h('p', {}, `Desviación media de afinación (en las notas que alcanzaste): ${Math.round(avgC)} cents`) : null,
-    h('p', { class: 'muted' }, `+${xp} XP`),
-    !passed ? h('p', {}, 'Necesitas 70% para avanzar. Repite la lección: la repetición con retroalimentación es justamente lo que entrena tu oído y tu voz.') : null,
-    h('div', { class: 'row' },
-      h('button', { class: 'btn', onclick: () => route() }, '↻ Repetir'),
-      passed && nextLesson ? h('button', { class: 'btn primary', onclick: () => nav('#leccion-' + nextLesson.id) }, 'Siguiente →') : h('button', { class: 'btn primary', onclick: () => nav('#aprender') }, 'Volver al camino'))));
+  if (passed) { sfx('done'); confetti(); }
+  const s = load();
+  stage.replaceChildren(h('div', { class: 'ex done-screen' },
+    h('div', { class: 'center' }, chincol(passed ? 'celebra' : 'piensa', 120)),
+    h('h1', { class: 'center' }, passed ? (lesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
+    lesson ? h('div', { class: 'stars-big' }, ...[0, 1, 2].map((k) => h('span', { class: k < stars ? 'on' : '' }, '★'))) : null,
+    h('div', { class: 'done-stats' },
+      h('div', { class: 'dstat' }, h('small', {}, 'Resultado'), h('b', {}, pct(score))),
+      h('div', { class: 'dstat xp' }, h('small', {}, 'XP'), h('b', {}, '+' + xp)),
+      h('div', { class: 'dstat flame' }, h('small', {}, 'Racha'), h('b', {}, (s.streak || 0) + (s.streak === 1 ? ' día' : ' días')))),
+    avgC != null ? h('p', { class: 'center small muted' }, `Desviación media de afinación en las notas que alcanzaste: ${Math.round(avgC)} cents.`) : null,
+    worst ? say(`<b>Para la próxima:</b> ${worst.issue.text}<br><span class="tip">${worst.issue.tip}</span>`, 'atento', { voice: [passed ? 'leccion_ok' : 'leccion_no', worst.issue.voice].filter(Boolean) })
+      : say(passed ? line('leccion_ok') : line('leccion_no'), passed ? 'celebra' : 'piensa', { voice: passed ? 'leccion_ok' : 'leccion_no' }),
+    h('div', { class: 'grow' }),
+    h('div', { class: 'actionbar' },
+      h('button', { class: 'btn', onclick: () => route() }, icon('repeat', 18), 'Repetir'),
+      passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(lesson ? '#aprender' : '#practicar') }, 'Continuar'))));
+  if (passed && !hadStreak) setTimeout(() => sfx('streak'), 900);
 }
 
-// ---------- Gimnasio ----------
+// Hoja de resultado del ejercicio (estilo Duolingo, con el diagnóstico del profe)
+function feedbackSheet(stage, res, { fails, easier, canEase }) {
+  return new Promise((resolve) => {
+    const v = verdict(res.score);
+    const top = (res.issues || [])[0];
+    sfx(res.score >= 0.7 ? 'ok' : 'bad');
+    const keep = res.keepView ? h('div', { class: 'keep' }, res.keepView) : h('div', { class: 'center sheet-bird' }, chincol(v.mood, 130));
+    const sheet = h('div', { class: 'sheet ' + v.tone },
+      h('div', { class: 'sheet-head' }, scoreRing(res.score, 72), h('div', {}, h('h2', {}, v.title), h('p', { class: 'small' }, res.detail || ''))),
+      top ? say(`${top.text}<br><span class="tip">${top.tip}</span>`, v.mood, { voice: [v.voice, top.voice].filter(Boolean) })
+        : say(res.score >= 0.7 ? 'Así se hace. Sigamos.' : 'Escucha con atención y vuelve a intentarlo.', v.mood, { voice: v.voice }),
+      easier ? h('p', { class: 'small muted' }, 'Hiciste la versión más fácil. Cuando te sientas listo, repite la lección completa.') : null,
+      h('div', { class: 'actionbar' },
+        canEase ? h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('easier'); } }, 'Hacerlo más fácil') : h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('again'); } }, icon('repeat', 18), 'Repetir'),
+        h('button', { class: 'btn ' + (res.score >= 0.7 ? 'primary' : 'secondary'), onclick: () => { stopSpeaking(); sfx('select'); resolve('next'); } }, res.score >= 0.7 ? 'Continuar' : 'Seguir igual')));
+    stage.replaceChildren(h('div', { class: 'ex' }, keep, h('div', { class: 'grow' }), sheet));
+  });
+}
+const canMakeEasier = (ex) => ['seq', 'match', 'sustain', 'rhythm'].includes(ex.type);
+function makeEasier(ex) {
+  const e = { ...ex };
+  if (e.tol) e.tol = Math.min(200, Math.round(e.tol * 1.6));
+  if (e.ttol) e.ttol = Math.round(e.ttol * 1.5);
+  if (e.bpm) e.bpm = Math.round(e.bpm * 0.85);
+  if (e.hold) e.hold = Math.max(0.6, e.hold * 0.7);
+  if (e.secs) e.secs = Math.max(3, e.secs - 2);
+  if (e.type === 'seq' && e.mode === 'echo') { e.mode = 'along'; e.reps = [e.reps[0], ...e.reps]; }
+  if (e.feedback === 'after') e.feedback = 'live';
+  e.text = (e.text ? e.text + '<br>' : '') + '<small>Versión más fácil: zona más ancha y más lento.</small>';
+  e.voice = 'v_facil';
+  return e;
+}
+
+// ---------- Practicar ----------
 function gymView() {
-  const item = (hash, t, d) => h('button', { class: 'card songrow', onclick: () => nav(hash) }, h('div', {}, h('b', {}, t), h('div', { class: 'muted small' }, d)), h('span', { class: 'chev' }, '›'));
-  view.replaceChildren(
-    h('h2', {}, 'Practicar'),
-    h('p', { class: 'muted' }, 'Ejercicios para hacer fuera de las lecciones, todos los días.'),
-    item('#calentamiento', '🔥 Calentamiento diario', 'Respiración → lip trill → escalas → arpegio (≈8 min)'),
-    item('#afinador', '🎯 Afinador libre', 'Ve tu nota y cuántos cents te desvías, en vivo'),
-    item('#teclado', '🎹 Notas de referencia y bordón', 'Toca notas para buscarlas con tu voz'),
-    item('#metronomo', '⏱️ Metrónomo', 'Para practicar el pulso'),
-    item('#extra-fina', '🔬 Afinación fina', 'Notas clavadas, bordón y oído de 10–25 cents'),
-    item('#extra-oido', '👂 Entrenamiento de oído', 'Sube/baja, intervalos, desafinaciones'),
-    item('#extra-ritmo', '🥁 Ritmo', 'Golpes y entradas a tiempo'),
-    item('#extra-melodia', '🎼 Melodías nuevas', 'Melodías al azar para imitar (cada vez distintas)'),
-    item('#extra-rango', '↕️ Todo tu rango', 'Notas al azar por todo tu registro'),
-    item('#rango', '📏 Medir mi rango otra vez', 'Si tu voz cambió o la medición salió rara'),
-  );
+  const tile = (hash, ic, t, d, color) => h('button', { class: 'tile ' + color, onclick: () => { sfx('select'); nav(hash); } }, h('span', { class: 'tile-ic' }, icon(ic, 26)), h('b', {}, t), h('small', {}, d));
+  view.replaceChildren(h('div', { class: 'page' },
+    say('Esto es para practicar fuera de las clases. Lo ideal: un poquito cada día.', 'feliz', { compact: true }),
+    h('h2', { class: 'sec' }, 'Calentar y técnica'),
+    h('div', { class: 'tiles' },
+      tile('#calentamiento', 'sparkle', 'Calentamiento', 'Aire, lip trill y escalas · 6 min', 'orange'),
+      tile('#extra-aire', 'breath', 'Aire parejo', 'Notas largas con barra de aire', 'orange'),
+      tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'violet')),
+    h('h2', { class: 'sec' }, 'Afinación y oído'),
+    h('div', { class: 'tiles' },
+      tile('#extra-fina', 'target', 'Afinación fina', 'Notas clavadas y bordón', 'blue'),
+      tile('#extra-oido', 'ear', 'Entrenar el oído', 'Sube/baja, intervalos', 'blue'),
+      tile('#extra-melodia', 'note', 'Melodías nuevas', 'Cada vez distintas', 'blue'),
+      tile('#extra-rango', 'wave', 'Todo tu rango', 'Notas por todo tu registro', 'blue')),
+    h('h2', { class: 'sec' }, 'Ritmo y herramientas'),
+    h('div', { class: 'tiles' },
+      tile('#extra-ritmo', 'drum', 'Ritmo', 'Golpes y entradas a tiempo', 'green'),
+      tile('#teclado', 'piano', 'Teclado', 'Notas de referencia y bordón', 'green'),
+      tile('#metronomo', 'metro', 'Metrónomo', 'Para practicar con pulso', 'green'),
+      tile('#rango', 'mic', 'Medir mi rango', 'Si tu voz cambió', 'green'))));
 }
 
 async function freeTuner() {
@@ -217,13 +306,13 @@ async function freeTuner() {
     ...Array.from({ length: 37 }, (_, i) => 40 + i).map((m) => h('option', { value: m }, noteName(m))));
   const tolS = h('select', {}, ...[[100, '±50 cents'], [50, '±25'], [30, '±15'], [20, '±10']].map(([v, l]) => h('option', { value: v, selected: v === 50 ? '' : null }, l)));
   tolS.onchange = () => tu.setTol(Number(tolS.value));
-  const play = h('button', { class: 'btn' }, '🔊 Oír nota objetivo');
+  const play = h('button', { class: 'btn' }, icon('speaker', 18), 'Oír');
   play.onclick = () => target.value && playNote(Number(target.value), 0, 1.2);
-  view.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Afinador libre'),
-    h('div', { class: 'row' }, h('label', { class: 'small' }, 'Objetivo ', target), h('label', { class: 'small' }, 'Zona ', tolS), play),
+  view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('h1', {}, 'Afinador'), h('button', { class: 'iconbtn', onclick: () => nav('#practicar') }, icon('close'))),
+    h('div', { class: 'row' }, h('label', { class: 'field' }, 'Objetivo', target), h('label', { class: 'field' }, 'Zona', tolS), play),
     tu.el, canvas,
-    h('p', { class: 'muted small' }, 'Úsalo para sostener notas largas: intenta que la línea quede recta y en la zona verde. 100 cents = 1 semitono.')));
-  try { await startMic(); } catch (e) { view.append(h('p', { class: 'warnbox' }, 'Permite el micrófono para usar el afinador.')); return; }
+    say('Úsalo para sostener notas largas: la línea recta y en la zona verde. Cien cents son un semitono.', 'feliz', { compact: true })));
+  try { await startMic(); } catch (e) { view.querySelector('.page').append(say(line('mic'), 'piensa', { voice: 'mic', tone: 'warn' })); return; }
   const roll = new Roll(canvas, { span: 6, nowFrac: 0.9 });
   const r = getRange(); roll.setRange(r.low - 3, r.high + 3);
   const c = getCtx(); const mySig = sig;
@@ -235,7 +324,7 @@ async function freeTuner() {
     roll.targets = tg ? [{ t0: -1e9, t1: 1e9, m0: tg, m1: tg }] : [];
     roll.addUser(c.currentTime, p.midi, cents == null ? null : Math.abs(cents) <= Number(tolS.value) / 2);
     roll.draw(c.currentTime);
-    await new Promise((r) => requestAnimationFrame(r));
+    await new Promise((res) => requestAnimationFrame(res));
   }
   roll.destroy();
 }
@@ -250,9 +339,9 @@ function keyboardView() {
     const black = [1, 3, 6, 8, 10].includes(m % 12);
     return h('button', { class: 'key' + (black ? ' black' : '') + (m === r.comfort ? ' comfort' : ''), onclick: () => playNote(m, 0, 1) }, noteName(m));
   });
-  view.replaceChildren(h('div', { class: 'card' }, h('h2', {}, 'Notas de referencia'),
-    h('p', { class: 'muted small' }, `Tu rango: ${noteName(r.low)}–${noteName(r.high)}. La nota marcada es tu zona central (${noteName(r.comfort)}).`),
-    h('label', { class: 'row small' }, 'Bordón continuo ', droneSel),
+  view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('h1', {}, 'Teclado'), h('button', { class: 'iconbtn', onclick: () => nav('#practicar') }, icon('close'))),
+    say(`Tu rango cómodo es ${noteName(r.low)} a ${noteName(r.high)}. La tecla marcada es tu zona central.`, 'feliz', { compact: true }),
+    h('label', { class: 'field' }, 'Bordón continuo', droneSel),
     h('div', { class: 'keys' }, keys)));
   const mySig = sig;
   (async () => { while (!mySig.aborted) await sleep(300); stopD && stopD(); })();
@@ -261,59 +350,72 @@ function keyboardView() {
 function metronomeView() {
   metro = new Metronome();
   const bpm = h('input', { type: 'range', min: 40, max: 200, value: 80 });
-  const lbl = h('div', { class: 'bignote' }, '80 BPM');
-  const btn = h('button', { class: 'btn primary big' }, '▶ Iniciar');
-  bpm.oninput = () => { metro.bpm = Number(bpm.value); lbl.textContent = bpm.value + ' BPM'; };
-  btn.onclick = () => { getCtx(); if (metro.on) { metro.stop(); btn.textContent = '▶ Iniciar'; } else { metro.start(); btn.textContent = '⏹ Detener'; } };
-  view.replaceChildren(h('div', { class: 'card center' }, h('h2', {}, 'Metrónomo'), lbl, bpm, btn,
-    h('p', { class: 'muted small' }, 'Ejercicio: canta una escala de 5 notas una nota por clic. Luego dos notas por clic (subdivisión).')));
+  const lbl = h('div', { class: 'bignote' }, '80');
+  const btn = h('button', { class: 'btn primary big' }, icon('play', 18), 'Iniciar');
+  bpm.oninput = () => { metro.bpm = Number(bpm.value); lbl.textContent = bpm.value; };
+  btn.onclick = () => { getCtx(); if (metro.on) { metro.stop(); btn.replaceChildren(icon('play', 18), 'Iniciar'); } else { metro.start(); btn.replaceChildren(icon('pause', 18), 'Detener'); } };
+  view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('h1', {}, 'Metrónomo'), h('button', { class: 'iconbtn', onclick: () => nav('#practicar') }, icon('close'))),
+    h('div', { class: 'center' }, lbl, h('div', { class: 'muted' }, 'pulsos por minuto')), bpm, btn,
+    say('Ejercicio: canta una escala de 5 notas, una nota por clic. Después dos notas por clic.', 'feliz', { compact: true })));
 }
 
-// ---------- Perfil y ajustes ----------
+// ---------- Perfil ----------
 function profileView() {
   const s = load(); const st = settings(); const r = getRange();
   const done = ALL_LESSONS.filter((l) => lessonState(l.id)?.done).length;
-  const hist = s.history.filter((x) => x.cents != null).slice(-20);
-  const first = hist.slice(0, 5), last = hist.slice(-5);
-  const avg = (a, k) => (a.length ? a.reduce((p, q) => p + q[k], 0) / a.length : null);
-  const trend = hist.length >= 10 ? `Desviación media: al principio ${Math.round(avg(first, 'cents'))} cents → ahora ${Math.round(avg(last, 'cents'))} cents` : 'Haz más ejercicios con voz para ver tu evolución en cents.';
-  const chk = (k, label) => { const i = h('input', { type: 'checkbox' }); i.checked = !!st[k]; i.onchange = () => setSetting(k, i.checked); return h('label', { class: 'row small' }, i, label); };
+  const hist = s.history.filter((x) => x.cents != null).slice(-30);
+  const chart = hist.length >= 3 ? centsChart(hist.map((x) => x.cents)) : h('p', { class: 'small muted' }, 'Cuando hagas más ejercicios con voz, aquí verás cómo baja tu desviación (en cents). Menos es mejor.');
+  const sw = (k, label, sub, def = true) => {
+    const i = h('input', { type: 'checkbox', class: 'switch' }); i.checked = st[k] === undefined ? def : !!st[k];
+    i.onchange = () => setSetting(k, i.checked);
+    return h('label', { class: 'set-row' }, h('span', {}, h('b', {}, label), sub ? h('small', {}, sub) : null), i);
+  };
   const timbre = h('select', {}, h('option', { value: 'voz' }, 'Voz (recomendado)'), h('option', { value: 'piano' }, 'Suave tipo piano'));
   timbre.value = st.timbre; timbre.onchange = () => setSetting('timbre', timbre.value);
   const lat = h('input', { type: 'number', min: 0, max: 500, value: st.latencyMs || 0 });
   lat.onchange = () => setSetting('latencyMs', Number(lat.value));
-  const calibMsg = h('span', { class: 'muted small' });
-  const calibBtn = h('button', { class: 'btn' }, '📏 Medir latencia automáticamente');
+  const calibMsg = h('small', { class: 'muted' });
+  const calibBtn = h('button', { class: 'btn' }, 'Medir latencia');
   calibBtn.onclick = async () => {
     calibBtn.disabled = true;
     try {
       const v = await measureLatency((m) => (calibMsg.textContent = m));
       if (v == null) calibMsg.textContent = 'No pude medir: quita los audífonos, sube el volumen y repite en silencio.';
-      else { const ms = Math.round(v * 1000); setSetting('latencyMs', ms); lat.value = ms; calibMsg.textContent = `Listo: ${ms} ms. Se usará para medir tus entradas a tiempo.`; }
+      else { const ms = Math.round(v * 1000); setSetting('latencyMs', ms); lat.value = ms; calibMsg.textContent = `Listo: ${ms} ms.`; }
     } catch (e) { calibMsg.textContent = 'Permite el micrófono para medir.'; }
     stopMic(); calibBtn.disabled = false;
   };
-  const calib = h('div', { class: 'card inner' }, h('p', { class: 'small' }, 'Sirve para que la app mida bien si entras a tiempo. <b>Sin audífonos</b> y con volumen medio: la app emite 6 notas y mide cuánto tardan en llegar al micrófono.'.replace(/<\/?b>/g, '')), calibBtn, calibMsg,
-    h('p', { class: 'muted small' }, 'Si usas audífonos Bluetooth, el retraso es mayor y no se puede medir así: usa audífonos con cable para los ejercicios de ritmo.'));
   const reset = h('button', { class: 'btn ghost danger' }, 'Borrar todo mi progreso');
   reset.onclick = () => { if (reset.dataset.sure) { resetAll(); nav('#aprender'); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar'; } };
-  view.replaceChildren(...[
+  view.replaceChildren(h('div', { class: 'page' }, ...[
+    h('h1', {}, 'Tu progreso'),
+    h('div', { class: 'stat-grid' },
+      h('div', { class: 'sbox flame' }, icon('flame', 22), h('b', {}, s.streak || 0), h('small', {}, 'días de racha')),
+      h('div', { class: 'sbox xp' }, icon('bolt', 22), h('b', {}, s.xp), h('small', {}, 'XP total')),
+      h('div', { class: 'sbox' }, icon('star', 22), h('b', {}, `${done}/${ALL_LESSONS.length}`), h('small', {}, 'lecciones'))),
+    h('div', { class: 'card' }, h('h3', {}, 'Tu voz'),
+      h('p', {}, r.guessed ? 'Rango sin medir todavía.' : `Rango cómodo: ${noteName(r.low)} a ${noteName(r.high)} (${r.high - r.low} semitonos). Zona central: ${noteName(r.comfort)}.`),
+      h('h3', {}, 'Tu afinación en el tiempo'), chart),
     installBanner(true),
-    h('div', { class: 'card' }, h('h2', {}, 'Tu progreso'),
-      h('div', { class: 'stats' }, h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'Racha'), h('b', {}, (s.streak || 0) + ' días')),
-        h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'XP'), h('b', {}, s.xp)),
-        h('div', { class: 'stat' }, h('div', { class: 'muted small' }, 'Lecciones'), h('b', {}, `${done}/${ALL_LESSONS.length}`))),
-      h('p', {}, r.guessed ? 'Rango: sin medir' : `Rango: ${noteName(r.low)}–${noteName(r.high)} · zona central ${noteName(r.comfort)}`),
-      h('p', { class: 'muted small' }, trend)),
-    h('div', { class: 'card form' }, h('h3', {}, 'Ajustes'),
-      h('label', {}, 'Sonido de las notas guía', timbre),
-      chk('octaveFree', 'En canciones, aceptar cantar una octava arriba/abajo'),
-      chk('echoCancel', 'Cancelación de eco del micrófono (actívala solo si cantas sin audífonos y la música confunde al detector)'),
-      h('label', {}, 'Compensación de latencia (ms, 0 = automática)', lat),
-      calib,
+    h('div', { class: 'card settings' }, h('h3', {}, 'Ajustes'),
+      sw('voice', 'Voz del Chincol', 'Te lee las instrucciones'),
+      sw('sfx', 'Sonidos', 'Aciertos, errores y celebraciones'),
+      sw('octaveFree', 'Aceptar otra octava en canciones', 'Para cantar canciones de voces más agudas o graves', true),
+      sw('echoCancel', 'Cancelación de eco', 'Solo si cantas sin audífonos y la música confunde al detector', false),
+      h('label', { class: 'set-row' }, h('span', {}, h('b', {}, 'Sonido de las notas guía')), timbre),
+      h('div', { class: 'set-row col' }, h('span', {}, h('b', {}, 'Latencia (ms)'), h('small', {}, 'Para medir bien si entras a tiempo. Mídela sin audífonos. Con Bluetooth el retraso es mayor: para ritmo, mejor audífonos con cable.')), h('div', { class: 'row' }, lat, calibBtn), calibMsg),
       reset),
-    h('div', { class: 'card small muted', html: `<b>Basado en:</b> Pfordresher & Brown 2007; Hutchins & Peretz 2012; Berglin, Pfordresher & Demorest 2022 (retroalimentación visual); Pfordresher & Greenspon 2024 (rango amplio); Titze 2006 y estudios de pajita/lip trill (SOVT); principios de aprendizaje motor (Maas 2008, NATS Journal of Singing); métodos de Seth Riggs (SLS), Cathrine Sadolin (CVT), Jo Estill y Cheryl Porter. Detección de tono: McLeod Pitch Method.` }),
-  ].filter(Boolean));
+    h('p', { class: 'small muted', html: '<b>Basado en:</b> Pfordresher & Brown 2007; Hutchins & Peretz 2012; Berglin, Pfordresher & Demorest 2022; Pfordresher & Greenspon 2024; Titze 2006 (SOVT); aprendizaje motor (Maas 2008, NATS); métodos de Seth Riggs, Cathrine Sadolin, Jo Estill y Cheryl Porter. Voz del Chincol: Kokoro (Apache 2.0). Detección de tono: McLeod Pitch Method.' }),
+  ].filter(Boolean)));
+}
+function centsChart(vals) {
+  const w = 320, ht = 120, max = Math.max(40, ...vals);
+  const pts = vals.map((v, i) => [10 + (i / (vals.length - 1)) * (w - 20), 10 + (v / max) * (ht - 20)]);
+  return h('div', { class: 'chart', html: `<svg viewBox="0 0 ${w} ${ht}" width="100%" height="${ht}">
+    <line x1="10" x2="${w - 10}" y1="${10 + (10 / max) * (ht - 20)}" y2="${10 + (10 / max) * (ht - 20)}" stroke="var(--ok)" stroke-dasharray="4 4"/>
+    <polyline fill="none" stroke="var(--primary)" stroke-width="3" stroke-linejoin="round" points="${pts.map((p) => p.join(',')).join(' ')}"/>
+    ${pts.map((p) => `<circle cx="${p[0]}" cy="${p[1]}" r="3.5" fill="var(--primary)"/>`).join('')}
+  </svg><div class="small muted">Arriba = más desviación. La línea verde marca 10 cents (nivel maestro).</div>` });
 }
 
 // ---------- Instalar como app ----------
@@ -321,22 +423,16 @@ let deferredPrompt = null;
 window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); deferredPrompt = e; if (/aprender|perfil|^#?$/.test(location.hash)) route(); });
 const standalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 function installBanner(force = false) {
-  if (standalone()) return force ? h('p', { class: 'muted small' }, '✅ Ya estás usando la app instalada.') : null;
+  if (standalone()) return null;
   if (!force && localStorage.getItem('syng.hideInstall')) return null;
   const ios = /iphone|ipad|ipod/i.test(navigator.userAgent);
-  const close = force ? null : h('button', { class: 'btn ghost small', onclick: (e) => { localStorage.setItem('syng.hideInstall', 1); e.target.closest('.card').remove(); } }, 'Ocultar');
-  if (deferredPrompt) {
-    return h('div', { class: 'card install' }, h('b', {}, '📲 Instala Syng en tu celular'),
-      h('p', { class: 'muted small' }, 'Queda como una app más, a pantalla completa y funciona sin internet (menos la primera carga).'),
-      h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; route(); } }, 'Instalar'), close));
-  }
-  return h('div', { class: 'card install' }, h('b', {}, '📲 Instala Syng en tu celular'),
-    h('p', { class: 'small' }, ios
-      ? 'En iPhone: abre esta página en Safari, toca el botón Compartir (cuadro con flecha ↑) y elige "Agregar a inicio".'
-      : 'En Android: abre el menú ⋮ de Chrome y elige "Instalar app" o "Agregar a la pantalla principal".'), close);
+  const close = force ? null : h('button', { class: 'btn ghost small', onclick: (e) => { localStorage.setItem('syng.hideInstall', 1); e.target.closest('.card').remove(); } }, 'Ahora no');
+  const body = deferredPrompt
+    ? h('div', { class: 'row' }, h('button', { class: 'btn primary', onclick: async () => { deferredPrompt.prompt(); await deferredPrompt.userChoice; deferredPrompt = null; route(); } }, 'Instalar'), close)
+    : h('div', {}, h('p', { class: 'small' }, ios ? 'En Safari: botón Compartir (cuadro con flecha) → "Agregar a inicio".' : 'En Chrome: menú ⋮ → "Instalar app".'), close);
+  return h('div', { class: 'card install' }, h('b', {}, '📲 Instala Syng en tu celular'), h('p', { class: 'small muted' }, 'Queda como app, a pantalla completa y funciona sin internet.'), body);
 }
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
-// arrancar el audio con el primer toque (requisito de los navegadores)
 document.addEventListener('pointerdown', () => getCtx(), { once: true });
 route();

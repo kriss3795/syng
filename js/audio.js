@@ -57,6 +57,8 @@ export const micStream = () => (mic ? mic.stream : null);
 // Lee el tono actual. Devuelve {midi (suavizado), raw, rms, clarity} ; midi = null si no hay voz clara.
 export function readPitch() {
   if (!mic) return { midi: null, rms: 0 };
+  // mientras el Chincol habla, no se escucha al usuario (su voz confundiría al detector)
+  if (document.body.classList.contains('speaking')) { mic.smoother.push(null); return { midi: null, raw: null, rms: 0, clarity: 0 }; }
   mic.analyser.getFloatTimeDomainData(mic.raw);
   const level = rms(mic.raw);
   mic.dec = decimate(mic.raw, mic.factor, mic.dec);
