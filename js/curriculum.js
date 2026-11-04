@@ -115,15 +115,15 @@ export const UNITS = [
     { id: 'u1l1', title: 'Hola, voz', build: () => [
       { type: 'info', title: '¡Hola!', body: `<p>${LINES.hola}</p><p>${LINES.como_funciona}</p><p>🎧 ${LINES.audifonos}</p>`, voice: ['hola', 'como_funciona', 'audifonos'] },
       { type: 'range' },
-      match([0, 2], { tol: 100, hold: 1 }),
-      seq(EST_1, { mode: 'along', bpm: 84, tol: 100, noTiming: true, labels: 'la', reps: [0, 0], text: 'Ahora cantamos juntos el comienzo de <b>Estrellita</b> con "la". La primera vuelta conmigo, la segunda tú solo.' }),
+      match([0, 2], { tol: 120, hold: 1 }),
+      seq(P([0, 2, 4, 2, [0, 2]]), { mode: 'along', bpm: 72, tol: 120, noTiming: true, labels: 'solf', reps: [0, 0], text: 'Ahora cantamos juntos <b>do, re, mi, re, do</b>. La primera vuelta conmigo, la segunda tú solo (antes te doy tu primera nota).' }),
     ] },
     { id: 'u1l2', title: 'Respira para cantar', build: () => [
       tec('tec_respira', 'Respiración baja'),
       breath(4, 6, 2),
       tec('tec_apoyo', 'El apoyo'),
-      sustain([0], { secs: 4, tol: 100 }),
-      seq(EST_2, { mode: 'along', bpm: 84, tol: 100, noTiming: true, labels: 'la', reps: [0, 0], text: 'Segunda parte de <b>Estrellita</b>. Usa el aire parejo que acabas de practicar.' }),
+      sustain([0], { secs: 4, tol: 120 }),
+      seq(EST_2, { mode: 'along', bpm: 76, tol: 120, noTiming: true, labels: 'la', reps: [0, 0], text: 'Segunda parte de <b>Estrellita</b>. Usa el aire parejo que acabas de practicar.' }),
     ] },
     { id: 'u1l3', title: 'Encuentra la nota', build: () => [
       tec('tec_imaginar', 'Escucha por dentro'),
@@ -141,18 +141,58 @@ export const UNITS = [
       checkInfo(),
       match([0, 4, 2], { tol: 80, hold: 1 }),
       sustain([0], { secs: 5, tol: 80 }),
-      seq(ESTRELLITA.slice(0, 7), { mode: 'echo', bpm: 84, tol: 90, ttol: 250, labels: 'la' }),
+      seq(P([4, 2, 0, 2, [4, 2]]), { mode: 'echo', bpm: 76, tol: 110, noTiming: true, labels: 'la' }),
+    ] },
+  ] },
+  { id: 'oid', title: 'Calzar la nota', desc: 'Memoria auditiva: escuchar, guardar la nota en la cabeza y cantarla justo', color: 'violet', lessons: [
+    { id: 'oid1', title: 'Nota a nota', build: () => [
+      tec('tec_calzar', 'Calzar la nota'),
+      match([0, 2, -1, 3, 1], { tol: 120, hold: 1 }),
+      ear('same', { rounds: 6, ivs: [2, 3, 4] }),
+    ] },
+    { id: 'oid2', title: 'Sirenas que aterrizan', build: () => [
+      seq([glide(-5, 0, 2), { s: 0, d: 2 }], { mode: 'echo', bpm: 66, tol: 120, noTiming: true, labels: 'none', reps: [0, 0], text: 'Desliza la voz <b>desde abajo</b> y aterriza en la nota. Quédate quieto ahí.' }),
+      seq([glide(5, 0, 2), { s: 0, d: 2 }], { mode: 'echo', bpm: 66, tol: 120, noTiming: true, labels: 'none', reps: [0, 0], text: 'Ahora <b>desde arriba</b>: bajas y aterrizas.' }),
+      match([0, 3, -2], { tol: 110, hold: 1 }),
+    ] },
+    { id: 'oid3', title: 'Guárdala en la cabeza', build: () => [
+      tec('tec_memoria', 'Memoria de la nota'),
+      match([0, 2, 4], { tol: 120, hold: 1, delay: 2, text: 'Escucha la nota, <b>guárdala en silencio dos segundos</b> y después cántala.' }),
+      ear('same', { rounds: 6, ivs: [1, 2], gap: 1.5 }),
+    ] },
+    { id: 'oid4', title: 'Dos notas', build: () => [
+      seq(P([[0, 2], [2, 2]]), { mode: 'echo', bpm: 70, tol: 120, noTiming: true, labels: 'la', reps: [0, 0] }),
+      seq(P([[4, 2], [0, 2]]), { mode: 'echo', bpm: 70, tol: 120, noTiming: true, labels: 'la', reps: [0, 0] }),
+      seq(P([[0, 2], [4, 2]]), { mode: 'echo', bpm: 70, tol: 120, noTiming: true, labels: 'la', reps: [0, 0] }),
+    ] },
+    { id: 'oid5', title: 'Tres notas', build: () => [
+      seq(P([0, 2, [4, 2]]), { mode: 'echo', bpm: 72, tol: 110, noTiming: true, labels: 'la', reps: [0, 0] }),
+      seq(P([4, 2, [0, 2]]), { mode: 'echo', bpm: 72, tol: 110, noTiming: true, labels: 'la', reps: [0, 0] }),
+      seq(P([0, 4, [2, 2]]), { mode: 'echo', bpm: 72, tol: 110, noTiming: true, labels: 'la', reps: [0, 0] }),
+    ] },
+    { id: 'oid6', title: 'Recuerda y canta', build: () => [
+      match([0, 4, 2], { tol: 110, hold: 1, delay: 3 }),
+      seq(P(randomMelody(3)), { mode: 'echo', bpm: 72, tol: 110, noTiming: true, labels: 'la', reps: [0, 0] }),
+      seq(P(randomMelody(3)), { mode: 'echo', bpm: 72, tol: 110, noTiming: true, labels: 'la', reps: [0, 0] }),
+      ear('same', { rounds: 6, ivs: [1, 2], gap: 2 }),
+    ] },
+    { id: 'oidx', title: 'Prueba: calzar la nota', check: true, build: () => [
+      checkInfo(),
+      match([0, 3, 5], { tol: 100, hold: 1, delay: 2 }),
+      seq(P([0, 2, 4, [2, 2]]), { mode: 'echo', bpm: 72, tol: 100, noTiming: true, labels: 'la' }),
+      ear('same', { rounds: 6, ivs: [1, 2], gap: 1.5 }),
     ] },
   ] },
   { id: 'u2', title: 'Primeras melodías', desc: 'Escalitas, melodías cortas y tus primeras canciones', color: 'blue', lessons: [
     { id: 'u2l1', title: 'Do, re, mi', build: () => [
       tec('tec_mandibula', 'Mandíbula suelta'),
-      seq(P([0, 2, 4, 2, [0, 2]]), { mode: 'echo', bpm: 80, tol: 100, ttol: 250, reps: [0, 1, 2] }),
-      seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 100, ttol: 250, labels: 'la' }),
+      seq(P([0, 2, 4, 2, [0, 2]]), { mode: 'echo', bpm: 76, tol: 110, ttol: 250, reps: [0, 0, 2] }),
+      seq(P(randomMelody(4)), { mode: 'echo', bpm: 76, tol: 110, ttol: 250, labels: 'la', reps: [0, 0] }),
     ] },
     { id: 'u2l2', title: 'Estrellita completa', build: () => [
-      seq(ESTRELLITA, { mode: 'along', bpm: 88, tol: 100, ttol: 220, labels: 'la', reps: [0, 0] }),
-      seq(ESTRELLITA, { mode: 'echo', bpm: 88, tol: 80, ttol: 200, labels: 'la' }),
+      seq(EST_1, { mode: 'echo', bpm: 80, tol: 100, ttol: 240, labels: 'la', reps: [0, 0], text: 'Primero la mitad de <b>Estrellita</b>: ojo con el salto de do a sol.' }),
+      seq(ESTRELLITA, { mode: 'along', bpm: 84, tol: 100, ttol: 220, labels: 'la', reps: [0, 0] }),
+      seq(ESTRELLITA, { mode: 'echo', bpm: 84, tol: 90, ttol: 200, labels: 'la' }),
     ] },
     { id: 'u2l3', title: 'Mini melodías', build: () => [
       seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 100, ttol: 250, labels: 'la' }),
@@ -521,4 +561,41 @@ export function recommend(history) {
   if (!top) return null;
   const map = { sube_fuerte: 'dinamica', dinamica: 'dinamica', bajo: 'fina', alto: 'fina', inestable: 'aire', aire: 'aire', cae: 'aire', scoop: 'fina', saltos: 'melodia', tarde: 'ritmo', temprano: 'ritmo', extra: 'ritmo', oido: 'oido', lejos: 'rango' };
   return map[top[0]] ? { kind: map[top[0]], key: top[0] } : null;
+}
+
+// ---------- Niveles de cada lección (repetir para afirmar, como Duolingo) ----------
+// 1 · Con ayuda: zona más ancha, más lento, sin cambios de tono y con una vuelta extra de práctica.
+// 2 · Sin ayuda: la lección tal cual (al pasarla se abre la siguiente).
+// 3 · Maestría (opcional): zona más estrecha y sin ver tu voz mientras cantas.
+export const LEVEL_NAMES = { 1: 'Con ayuda', 2: 'Sin ayuda', 3: 'Maestría' };
+export function applyLevel(exs, level, keepInfo = false) {
+  const out = [];
+  for (const ex of exs) {
+    if (ex.type === 'info' && level >= 2 && !keepInfo && ex.voice !== 'tec_repaso') continue; // la teoría ya la viste en el nivel 1
+    if (level === 2) { out.push(ex); continue; }
+    const e = { ...ex };
+    if (level === 1) {
+      if (e.tol) e.tol = Math.min(160, Math.round(e.tol * 1.3));
+      if (e.ttol) e.ttol = Math.round(e.ttol * 1.4);
+      if (e.bpm) e.bpm = Math.round(e.bpm * 0.88);
+      if (e.hold) e.hold = Math.max(0.7, +(e.hold * 0.85).toFixed(2));
+      if (e.secs && e.type !== 'breath') e.secs = Math.max(3, e.secs - 1);
+      if (e.feedback === 'after') e.feedback = 'live';
+      if (e.type === 'seq' && e.reps) {
+        const r0 = e.reps[0];
+        e.reps = e.reps.map(() => r0); // mismo tono en todas las rondas
+        if (e.mode === 'echo' && e.reps.length < 2) e.reps = [r0, r0]; // una vuelta extra para memorizar
+        if (e.mode === 'read' && e.reps.length < 2) e.reps = [r0, r0];
+      }
+      if (e.type === 'match' && e.delay) e.delay = Math.max(1, e.delay - 1);
+      if (e.type === 'ear' && e.cents) e.cents = e.cents.map((c) => Math.round(c * 1.4));
+    } else if (level === 3) {
+      if (e.tol) e.tol = Math.max(30, Math.round(e.tol * 0.8));
+      if (e.ttol) e.ttol = Math.max(80, Math.round(e.ttol * 0.85));
+      if (e.type === 'seq' && e.mode !== 'along') e.feedback = 'after';
+      if (e.type === 'match' && e.hold) e.hold = +(e.hold * 1.3).toFixed(2);
+    }
+    out.push(e);
+  }
+  return out;
 }

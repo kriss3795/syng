@@ -1,7 +1,7 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
-import { UNITS, ALL_LESSONS, warmup, extraSession, recommend } from './curriculum.js';
+import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES } from './curriculum.js';
 import { run } from './exercises.js';
-import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong } from './store.js';
+import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS } from './store.js';
 import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
 import { noteName } from './pitch.js';
 import { songsView, newSongView, songDetail, practiceView, syncView, linesView } from './songs.js';
@@ -49,6 +49,7 @@ async function route() {
     if (hsh === 'aprender' || hsh === '') return homeView();
     if (hsh === 'hoy') return todayClass();
     if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
+    if (hsh === 'repaso') return session({ title: 'Repaso', color: 'teal', exercises: reviewExercises(), id: 'repaso' });
     if (hsh === 'calentamiento') return session({ title: 'Calentamiento', color: 'orange', exercises: warmup(), id: 'warmup' });
     if (hsh.startsWith('extra-')) return session({ title: EXTRA[hsh.slice(6)] || 'Práctica', color: 'blue', exercises: extraSession(hsh.slice(6)), id: 'extra-' + hsh.slice(6) });
     if (hsh === 'rango') return session({ title: 'Medir mi rango', color: 'violet', exercises: [{ type: 'range' }], id: 'range' });
@@ -101,6 +102,10 @@ function homeView() {
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
     chincol('piensa', 44),
     h('div', {}, h('b', {}, 'Práctica recomendada: ' + EXTRA[rec.kind]), h('div', { class: 'small muted' }, 'Según tus últimos ejercicios, esto es lo que más te va a ayudar.')), icon('chevron')) : null;
+  const nDone = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check).length;
+  const reviewCard = nDone >= 2 ? h('button', { class: 'card rec', onclick: () => { sfx('select'); nav('#repaso'); } },
+    chincol('hola', 44),
+    h('div', {}, h('b', {}, 'Repaso rápido'), h('div', { class: 'small muted' }, 'Cuatro ejercicios de lo que ya aprendiste. Repasar seguido es lo que lo deja fijo.')), icon('chevron')) : null;
   let gi = 0;
   const path = UNITS.map((u) => {
     const nodes = u.lessons.map((l, k) => {
@@ -110,17 +115,19 @@ function homeView() {
       const cur = idx === nextIdx;
       const offset = [0, 1, 0, -1][k % 4];
       return h('div', { class: 'node-wrap', style: `--off:${offset}` },
-        cur ? h('div', { class: 'node-tip' }, 'Empezar') : null,
+        cur ? h('div', { class: 'node-tip' }, l.check ? 'Prueba' : lessonLevel(l.id) ? 'Nivel ' + (lessonLevel(l.id) + 1) : 'Empezar') : null,
         h('button', { class: 'node ' + u.color + (st?.done ? ' done' : '') + (un ? '' : ' locked') + (cur ? ' current' : ''), 'aria-label': l.title,
           onclick: () => { if (un) { sfx('select'); nav('#leccion-' + l.id); } else { sfx('bad'); flash('Completa la lección anterior primero'); } } },
           icon(st?.done ? 'star' : un ? lessonIcon(l) : 'lock', 30)),
-        h('div', { class: 'node-label' }, l.title, st?.done ? h('span', { class: 'stars-mini' }, '★'.repeat(st.stars) + '☆'.repeat(3 - st.stars)) : null));
+        h('div', { class: 'node-label' }, l.title,
+          !l.check && un ? h('span', { class: 'lvl-dots' }, ...[1, 2, 3].map((k) => h('i', { class: (k <= lessonLevel(l.id) ? 'on' : '') + (k === 3 ? ' crown' : '') }))) : null,
+          st?.done ? h('span', { class: 'stars-mini' }, '★'.repeat(st.stars) + '☆'.repeat(3 - st.stars)) : null));
     });
     return h('section', { class: 'unit ' + u.color },
       h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
       h('div', { class: 'path' }, nodes));
   });
-  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, recCard, ...path].filter(Boolean)));
+  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, recCard, reviewCard, ...path].filter(Boolean)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
@@ -145,8 +152,29 @@ function todayClass() {
   const idx = nextLessonIdx();
   if (idx < 0) return nav('#practicar');
   const l = ALL_LESSONS[idx];
+  const level = nextLevel(l);
   const pre = load().lastWarmup === today() || UNITS.indexOf(l.unit) === 0 && idx < 2 ? [] : warmup(true).map((e) => ({ ...e, noScore: true }));
-  return session({ title: 'Clase de hoy · ' + l.title, color: l.unit.color, exercises: [...pre, ...l.build()], id: l.id, lesson: l, next: ALL_LESSONS[idx + 1], intro: l.intro, introVoice: l.introVoice });
+  return session({ title: 'Clase de hoy · ' + l.title + (l.check ? '' : ' · Nivel ' + level), color: l.unit.color, exercises: [...pre, ...applyLevel(l.build(), level)], id: l.id, lesson: l, level, next: ALL_LESSONS[idx + 1], intro: level === 1 || l.check ? l.intro : null, introVoice: l.introVoice });
+}
+
+// Nivel que toca: las pruebas de unidad tienen uno solo; las lecciones, 1 (con ayuda) → 2 (sin ayuda) → 3 (maestría, opcional)
+function nextLevel(l) {
+  if (l.check) return LEVELS_TO_PASS;
+  return Math.min(3, lessonLevel(l.id) + 1);
+}
+// Repaso estilo Duolingo: un ejercicio de cada una de 4 lecciones ya aprobadas (más probables las de menos estrellas)
+function reviewExercises() {
+  const done = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check);
+  const pool = done.flatMap((l) => Array(4 - Math.min(3, lessonState(l.id).stars || 0)).fill(l));
+  const picked = [];
+  while (picked.length < Math.min(4, done.length) && pool.length) {
+    const l = pool.splice(Math.floor(Math.random() * pool.length), 1)[0];
+    if (!picked.includes(l)) picked.push(l);
+  }
+  return picked.flatMap((l) => {
+    const exs = applyLevel(l.build(), 2).filter((e) => e.type !== 'info' && e.type !== 'range' && e.type !== 'breath');
+    return exs.length ? [exs[Math.floor(Math.random() * exs.length)]] : [];
+  });
 }
 
 function lessonIntro(id) {
@@ -154,7 +182,10 @@ function lessonIntro(id) {
   if (idx < 0) return nav('#aprender');
   const l = ALL_LESSONS[idx];
   const unitIdx = UNITS.indexOf(l.unit);
-  const exs = l.build();
+  const maxLevel = nextLevel(l);
+  let level = maxLevel;
+  const exsFor = (lv) => applyLevel(l.build(), lv, lv === 2 && lessonLevel(l.id) < 1);
+  let exs = exsFor(level);
   const needWarm = unitIdx >= 2 && load().lastWarmup !== today();
   const warmChk = h('input', { type: 'checkbox' }); warmChk.checked = needWarm;
   const nEx = exs.filter((e) => e.type !== 'info').length;
@@ -162,18 +193,33 @@ function lessonIntro(id) {
     h('div', { class: 'li-top' }, h('button', { class: 'iconbtn', onclick: () => nav('#aprender'), 'aria-label': 'Cerrar' }, icon('close')), h('span', { class: 'li-unit' }, l.unit.title)),
     h('h1', {}, l.title),
     say(l.intro || 'Vamos con esta clase.', 'feliz', { voice: l.introVoice }),
+    l.check ? null : levelPicker(l, maxLevel, (lv) => { level = lv; exs = exsFor(lv); }),
     h('div', { class: 'li-meta' }, h('span', { class: 'pill' }, `${nEx} ejercicio${nEx === 1 ? '' : 's'}`), h('span', { class: 'pill' }, `≈ ${Math.max(2, Math.round(nEx * 1.5 + (warmChk.checked ? 2 : 0)))} min`), lessonState(id)?.done ? h('span', { class: 'pill ok' }, '★'.repeat(lessonState(id).stars)) : null),
     unitIdx >= 2 ? h('label', { class: 'warm-toggle' }, warmChk, h('span', {}, h('b', {}, 'Calentar antes (2 min)'), h('br'), h('small', {}, needWarm ? 'Hoy no has calentado: te lo recomiendo.' : 'Ya calentaste hoy.'))) : null,
     h('div', { class: 'grow' }),
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => {
       stopSpeaking(); sfx('select');
       const pre = warmChk.checked ? warmup(true).map((e) => ({ ...e, noScore: true })) : [];
-      session({ title: l.title, color: l.unit.color, exercises: [...pre, ...exs], id: l.id, lesson: l, next: ALL_LESSONS[idx + 1] });
+      session({ title: l.title, color: l.unit.color, exercises: [...pre, ...exs], id: l.id, lesson: l, level, next: ALL_LESSONS[idx + 1] });
     } }, 'Empezar'))));
 }
 
+const LEVEL_TIPS = { 1: 'Zona más ancha, más lento, sin cambios de tono y una vuelta extra para memorizar.', 2: 'La lección completa. Al pasarla se abre la siguiente.', 3: 'Opcional: zona más estrecha y sin ver tu voz mientras cantas.' };
+function levelPicker(l, maxLevel, onPick) {
+  const passed = lessonLevel(l.id);
+  const box = h('div', { class: 'levels' });
+  const draw = (sel) => box.replaceChildren(...[1, 2, 3].map((lv) => {
+    const open = lv <= maxLevel;
+    return h('button', { class: 'lvl' + (lv === sel ? ' sel' : '') + (lv <= passed ? ' passed' : '') + (open ? '' : ' locked'), disabled: !open,
+      onclick: () => { sfx('select'); onPick(lv); draw(lv); } },
+      h('span', { class: 'lvl-n' }, lv <= passed ? '✓' : String(lv)), h('b', {}, LEVEL_NAMES[lv]), h('small', {}, LEVEL_TIPS[lv]));
+  }));
+  draw(maxLevel);
+  return box;
+}
+
 // ---------- Sesión de ejercicios (lección, calentamiento o práctica) ----------
-async function session({ title, color, exercises, id, lesson, next, intro, introVoice }) {
+async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_PASS, next, intro, introVoice }) {
   const mySig = sig;
   document.body.classList.add('focus');
   const fill = h('div', { class: 'pfill' });
@@ -219,7 +265,8 @@ async function session({ title, color, exercises, id, lesson, next, intro, intro
   const hadStreak = load().lastDay === today();
   record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null, issues: issueKeys });
   let stars = null;
-  if (lesson) stars = setLesson(id, score);
+  if (lesson) stars = setLesson(id, score, level);
+  const moreLevels = lesson && !lesson.check && stars > 0 && level < LEVELS_TO_PASS;
   const passed = !lesson || stars > 0;
   const xp = passed ? Math.round(10 + score * 15) : 5;
   addXp(xp);
@@ -228,7 +275,8 @@ async function session({ title, color, exercises, id, lesson, next, intro, intro
   const s = load();
   stage.replaceChildren(h('div', { class: 'ex done-screen' },
     h('div', { class: 'center' }, chincol(passed ? 'celebra' : 'piensa', 120)),
-    h('h1', { class: 'center' }, passed ? (lesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
+    h('h1', { class: 'center' }, passed ? (moreLevels ? `¡Nivel ${level} listo!` : lesson && level === 3 ? '¡Maestría!' : lesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
+    moreLevels ? h('p', { class: 'center' }, `Ahora la misma lección en el nivel ${level + 1}: ${LEVEL_NAMES[level + 1].toLowerCase()}. Repetir es lo que afirma la nota en tu oído.`) : null,
     lesson ? h('div', { class: 'stars-big' }, ...[0, 1, 2].map((k) => h('span', { class: k < stars ? 'on' : '' }, '★'))) : null,
     h('div', { class: 'done-stats' },
       h('div', { class: 'dstat' }, h('small', {}, 'Resultado'), h('b', {}, pct(score))),
@@ -240,7 +288,8 @@ async function session({ title, color, exercises, id, lesson, next, intro, intro
     h('div', { class: 'grow' }),
     h('div', { class: 'actionbar' },
       h('button', { class: 'btn', onclick: () => route() }, icon('repeat', 18), 'Repetir'),
-      passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(lesson ? '#aprender' : '#practicar') }, 'Continuar'))));
+      moreLevels ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + id); } }, `Nivel ${level + 1}`)
+      : passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(lesson ? '#aprender' : '#practicar') }, 'Continuar'))));
   if (passed && !hadStreak) setTimeout(() => sfx('streak'), 900);
 }
 
@@ -270,7 +319,7 @@ function makeEasier(ex) {
   if (e.bpm) e.bpm = Math.round(e.bpm * 0.85);
   if (e.hold) e.hold = Math.max(0.6, e.hold * 0.7);
   if (e.secs) e.secs = Math.max(3, e.secs - 2);
-  if (e.type === 'seq' && e.mode === 'echo') { e.mode = 'along'; e.reps = [e.reps[0], ...e.reps]; }
+  if (e.type === 'seq' && e.reps) { const r0 = e.reps[0]; e.reps = e.reps.map(() => r0); if (e.reps.length < 2) e.reps = [r0, r0]; } // mismo tono y una vuelta más
   if (e.feedback === 'after') e.feedback = 'live';
   e.text = (e.text ? e.text + '<br>' : '') + '<small>Versión más fácil: zona más ancha y más lento.</small>';
   e.voice = 'v_facil';

@@ -335,3 +335,18 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .tile.teal .tile-ic { background: var(--teal); } .tile.rust .tile-ic { background: var(--rust); } .tile.pink .tile-ic { background: var(--pink); }
 .lesson-intro.teal h1 { color: var(--teal-d); } .lesson-intro.rust h1 { color: var(--rust-d); } .lesson-intro.pink h1 { color: var(--pink-d); }
 .hero .coach .chincol { width: 84px !important; height: 84px !important; }
+
+/* niveles de lección (con ayuda → sin ayuda → maestría) */
+.levels { display: grid; gap: 8px; margin: 14px 0 4px; }
+.lvl { display: grid; grid-template-columns: 36px 1fr; column-gap: 12px; align-items: center; text-align: left; padding: 10px 14px; border: 2px solid var(--line); border-radius: var(--r-md); background: var(--card); color: var(--ink); font: inherit; cursor: pointer; }
+.lvl b { font-family: var(--display); font-weight: 600; font-size: 16px; }
+.lvl small { grid-column: 2; color: var(--muted); font-size: 13px; line-height: 1.35; }
+.lvl-n { grid-row: span 2; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: var(--track); font-family: var(--display); font-weight: 700; color: var(--muted); }
+.lvl.sel { border-color: var(--primary); background: var(--primary-l); }
+.lvl.sel .lvl-n { background: var(--primary); color: #fff; }
+.lvl.passed .lvl-n { background: var(--ok); color: #fff; }
+.lvl.locked { opacity: .45; cursor: not-allowed; }
+.lvl-dots { display: flex; justify-content: center; gap: 4px; margin-top: 4px; }
+.lvl-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--track); border: 1.5px solid var(--line); }
+.lvl-dots i.on { background: var(--primary); border-color: var(--primary-d); }
+.lvl-dots i.crown.on { background: #FFC93C; border-color: #D99E0A; }

@@ -229,9 +229,10 @@ async function runMatch(spec, root, sig) {
     roll.setRange(target - 6, target + 6);
     const c = getCtx();
     const stopDrone = spec.drone != null ? startDrone(spec.drone) : null;
-    let quietUntil = 0;
+    let quietUntil = 0, heardUntil = 0;
+    const delay = spec.delay || 0; // memoria auditiva: silencio entre la nota y tu turno
     // mientras suena la nota de referencia no se evalúa (el micrófono podría captarla)
-    const play = () => { playNote(target, c.currentTime + 0.05, 1.1, 0.28); quietUntil = c.currentTime + 1.35; };
+    const play = () => { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; quietUntil = heardUntil + delay; };
     play();
     again.onclick = play;
     let skipped = false; skip.onclick = () => (skipped = true);
@@ -245,8 +246,9 @@ async function runMatch(spec, root, sig) {
       const dt = Math.min(0.1, now - lastT); lastT = now;
       const p = readPitch();
       if (now < quietUntil) {
-        tu.update(null, target); tu.setMsg('Escucha…');
-        if (lastCoach !== 'esc') { setCoach('👂 Escucha la nota…', 'canta'); lastCoach = 'esc'; }
+        const mem = now >= heardUntil;
+        tu.update(null, target); tu.setMsg(mem ? 'Guárdala… ' + Math.ceil(quietUntil - now) : 'Escucha…');
+        if (lastCoach !== (mem ? 'mem' : 'esc')) { setCoach(mem ? '🧠 Guárdala en tu cabeza, en silencio. Tarárala por dentro…' : '👂 Escucha la nota…', mem ? 'piensa' : 'canta'); lastCoach = mem ? 'mem' : 'esc'; }
         roll.draw(now); await raf(); continue;
       }
       const cents = tu.update(p.midi, target);
@@ -374,8 +376,25 @@ async function runSeq(spec, root, sig) {
     }
     return tt;
   };
+  // Antes de cada ronda que cantas sin guía, te doy tu primera nota (y aviso si la ronda cambia de tono):
+  // sin esa referencia, al subir medio tono seguirías en el tono anterior y todo saldría "desafinado".
+  const cues = []; const rounds = [];
+  const firstNote = spec.pattern.find((n) => n.s != null);
+  const semiTxt = (d) => { const a = Math.abs(d); const w = a === 1 ? 'medio tono' : a === 2 ? 'un tono' : a + ' semitonos'; return w + (d > 0 ? ' más arriba' : ' más abajo'); };
+  let prevR = reps[0];
   reps.forEach((r, ri) => {
     const base = spec.base + r;
+    const r0 = t;
+    if (mode === 'along' && ri > 0 && firstNote) {
+      const m = base + firstNote.s;
+      events.push({ type: 'note', t, d: beat * 1.7, m0: m, m1: m, gain: 0.26 });
+      events.push({ type: 'click', t: t + 2 * beat, accent: true }); events.push({ type: 'click', t: t + 3 * beat, accent: false });
+      cues.push({ t0: t - 0.3, t1: t + 4 * beat, txt: r !== prevR ? `Ronda ${ri + 1}: ${semiTxt(r - prevR)}. Escucha tu primera nota` : `Ronda ${ri + 1}: esta es tu primera nota` });
+      t += 4 * beat;
+    } else if (mode === 'echo' && ri > 0 && r !== prevR) {
+      cues.push({ t0: t - 0.3, t1: t + 0.6, txt: `Ronda ${ri + 1}: ${semiTxt(r - prevR)}` });
+    }
+    prevR = r;
     if (mode === 'echo') {
       t = lay(base, true, true, !!spec.accompInDemo);
       for (let i = 0; i < 2; i++) events.push({ type: 'click', t: t + i * beat, accent: i === 0 });
@@ -387,6 +406,7 @@ async function runSeq(spec, root, sig) {
     } else {
       t = lay(base, ri === 0, ri === 0, true);
     }
+    rounds.push({ t0: r0, t1: t });
     t += beat;
   });
   const endT = t;
@@ -398,7 +418,8 @@ async function runSeq(spec, root, sig) {
   status.textContent = 'Prepárate…';
   const stopBtn = h('button', { class: 'btn ghost' }, 'Detener');
   let stopped = false; stopBtn.onclick = () => (stopped = true);
-  root.replaceChildren(h('div', { class: 'ex' }, coachBox, canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
+  const roundPill = h('span', { class: 'pill' });
+  root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
   const roll = new Roll(canvas, { span: Math.max(4, Math.min(8, beat * 10)), nowFrac: 0.3 });
   roll.targets = targets.map((x) => x);
   roll.fitTargets(3);
@@ -435,7 +456,10 @@ async function runSeq(spec, root, sig) {
     roll.addUser(now, p.midi, ok);
     roll.draw(now, { showUser: feedback === 'live' });
     const cur = targets.find((x) => now >= x.t0 && now <= x.t1);
-    status.textContent = mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
+    const cue = cues.find((q) => now >= q.t0 && now <= q.t1);
+    const rd = rounds.findIndex((q) => now >= q.t0 - beat && now <= q.t1 + beat);
+    if (rounds.length > 1) roundPill.textContent = `Ronda ${Math.max(1, rd + 1)} de ${rounds.length}`;
+    status.textContent = cue ? '👂 ' + cue.txt : mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
     await raf();
   }
   // ---- evaluar ----
@@ -512,6 +536,12 @@ async function runEar(spec, root, sig) {
       const iv = ivs[Math.floor(Math.random() * ivs.length)];
       q = '¿Qué intervalo escuchas?'; opts = ivs.map((i) => IV_NAMES[i] || i + ' st'); ans = ivs.indexOf(iv);
       play = () => { playNote(a, c.currentTime + 0.05, 0.7); playNote(a + iv, c.currentTime + 0.85, 0.9); };
+    } else if (spec.kind === 'same') { // ¿igual o distinta? (memoria de altura)
+      const diff = Math.random() < 0.5;
+      const iv = diff ? (spec.ivs || [1, 2, 3])[Math.floor(Math.random() * (spec.ivs || [1, 2, 3]).length)] * (Math.random() < 0.5 ? 1 : -1) : 0;
+      const gap = spec.gap || 0.4;
+      q = '¿Las dos notas son iguales o distintas?'; opts = ['Iguales', 'Distintas']; ans = diff ? 1 : 0;
+      play = () => { playNote(a, c.currentTime + 0.05, 0.8); playNote(a + iv, c.currentTime + 0.85 + gap, 0.8); };
     } else if (spec.kind === 'mode') { // color: acorde mayor o menor
       const minor = Math.random() < 0.5;
       const third = minor ? 3 : 4;

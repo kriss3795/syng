@@ -63,11 +63,16 @@ export function getRange() {
 export function setRange(r) { load().range = r; save(); }
 
 export function lessonState(id) { return load().lessons[id] || null; }
-export function setLesson(id, score) {
+// Niveles por lección (como las coronas de Duolingo): 1 = con ayuda, 2 = sin ayuda (abre la siguiente), 3 = maestría (opcional).
+export const LEVELS_TO_PASS = 2;
+export function lessonLevel(id) { const st = load().lessons[id]; return !st ? 0 : st.level ?? (st.done ? LEVELS_TO_PASS : 0); }
+export function setLesson(id, score, level = LEVELS_TO_PASS) {
   const s = load();
   const stars = score >= 0.95 ? 3 : score >= 0.85 ? 2 : score >= 0.7 ? 1 : 0;
   const prev = s.lessons[id] || { stars: 0, best: 0, done: false };
-  s.lessons[id] = { stars: Math.max(prev.stars, stars), best: Math.max(prev.best, score), done: prev.done || stars > 0 };
+  const prevLevel = prev.level ?? (prev.done ? LEVELS_TO_PASS : 0);
+  const newLevel = stars > 0 ? Math.max(prevLevel, level) : prevLevel;
+  s.lessons[id] = { stars: Math.max(prev.stars, stars), best: Math.max(prev.best, score), level: newLevel, done: prev.done || newLevel >= LEVELS_TO_PASS };
   save();
   return stars;
 }
