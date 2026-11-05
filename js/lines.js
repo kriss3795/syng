@@ -100,6 +100,11 @@ export const LINES = {
   tec_colocar: 'Colocar la voz es encontrar dónde vibra. Con la boca cerrada, haz un "mmm" y busca cosquillas en los labios y la nariz. Después abre a "a" sin perder esa vibración. Así la voz suena más, con menos esfuerzo.',
   tec_mover: 'Para afinar, tu voz tiene que aprender a subir y bajar a voluntad. Sigue la línea despacio, como si dibujaras con la voz. Mirarla en la pantalla ayuda a tu cerebro a conectar lo que oyes con lo que haces.',
   tec_identidad: 'Vamos a descubrir tu voz con datos. Cantarás notas largas por todo tu rango, y en cada una mido qué tan afinada, estable y limpia sale. Así encontramos dónde cantas mejor, qué tipo de voz tienes y cómo es tu timbre.',
+  st_1: 'Etapa uno, fundamentos. Primero el instrumento y la confianza: postura, respiración, y conectar el oído con la voz. Es lo que más cuesta al empezar, y lo que más rinde.',
+  st_2: 'Etapa dos, emisión. Ahora, cómo nace el sonido: el ataque limpio y el manejo del aire, después la resonancia y las vocales. Y desde ya cantas melodías simples.',
+  st_3: 'Etapa tres, lenguaje musical. El ritmo, la escala y los intervalos en el orden del método de Vaccai: terceras, cuartas, quintas, sextas, octavas y semitonos. Después, afinar fino y leer cantando.',
+  st_4: 'Etapa cuatro, control y extensión. Con la base firme, unimos los registros, ampliamos el rango, y trabajamos la agilidad y la dinámica.',
+  st_5: 'Etapa cinco, interpretación. Juntamos todo para cantar de verdad: canciones completas, dos voces, frases largas y estilo propio.',
   tec_repaso: 'Esta es la prueba de la unidad: mezcla lo que practicaste. Si la pasas, esa habilidad ya es tuya.',
   tec_cancion: 'Ya puedes practicar tus propias canciones. Ve a la pestaña Canciones y sube la versión con voz, la instrumental y la letra.',
 

@@ -566,6 +566,35 @@ export const UNITS = [
     { id: 'u10l3', title: 'Examen final', build: () => [seq(ODA, { mode: 'echo', bpm: 100, tol: 30, ttol: 100, labels: 'la', feedback: 'after' }), seq(P(randomMelody(6)), { mode: 'echo', bpm: 95, tol: 30, ttol: 100, labels: 'la', feedback: 'after' }), ear('detune', { rounds: 8, cents: [10] })] },
   ] },
 ];
+// ---------- Orden cronológico en 5 etapas ----------
+// Basado en: R. Miller, "The Structure of Singing" (ataque → manejo del aire → agilidad → resonancia → vocales →
+// consonantes → sostenuto → registros → modificación vocálica → extensión del rango → vibrato → salud);
+// N. Vaccai, "Metodo pratico di canto" (1832): escala y terceras → cuartas y quintas → sextas → séptimas y octavas →
+// semitonos → síncopa → agilidad (volate); S. Riggs, "Singing for the Stars": primero construir confianza;
+// y la investigación sobre quien desafina: lo primero es conectar oído y voz (Pfordresher & Brown, 2007).
+export const STAGES = [
+  { n: 1, title: 'Fundamentos', sub: 'Tu cuerpo, tu voz y tu oído', color: 'teal', units: ['enc', 'u1', 'oid'], voice: 'st_1',
+    why: 'Primero el instrumento y la confianza: postura, respiración y conectar el oído con la voz. Seth Riggs parte "construyendo confianza", y la investigación muestra que lo que más cuesta al empezar es igualar la nota (Pfordresher y Brown, 2007).' },
+  { n: 2, title: 'Emisión', sub: 'Cómo nace el sonido, y tus primeras melodías', color: 'blue', units: ['u2', 'u3', 'voc'], voice: 'st_2',
+    why: 'Después, cómo nace el sonido: el ataque limpio y el manejo del aire son los dos primeros capítulos de "The Structure of Singing" de Richard Miller; luego la resonancia y las vocales. Y desde ya cantas melodías simples, para no esperar a cantar.' },
+  { n: 3, title: 'Lenguaje musical', sub: 'Ritmo, escalas, intervalos, semitonos y lectura', color: 'violet', units: ['u4', 'u5', 'u6', 'men', 'lec'], voice: 'st_3',
+    why: 'Con la voz encaminada, la música en el orden del método de Vaccai (1832), que todavía se usa en conservatorios: escala y terceras, cuartas y quintas, sextas, octavas, semitonos y síncopa. Después la afinación fina y leer cantando.' },
+  { n: 4, title: 'Control y extensión', sub: 'Registros, agudos, agilidad y dinámica', color: 'orange', units: ['u7', 'u9', 'din'], voice: 'st_4',
+    why: 'Con una base firme, se extiende la voz: unir los registros, ampliar el rango, la agilidad y la dinámica (messa di voce). Miller los trata después de la emisión porque dependen de ella.' },
+  { n: 5, title: 'Interpretación', sub: 'Canciones, dos voces, estilo y maestría', color: 'green', units: ['u8', 'arm', 'est', 'u10'], voice: 'st_5',
+    why: 'Al final se junta todo para interpretar: canciones completas, cantar con otra voz, frases largas, vibrato natural y resistencia.' },
+];
+{
+  const order = STAGES.flatMap((st) => st.units);
+  UNITS.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  for (const st of STAGES) for (const id of st.units) { const u = UNITS.find((x) => x.id === id); if (u) { u.stage = st.n; u.color = st.color; } }
+  // dentro de las unidades, también el orden de los manuales
+  const reorder = (uid, ids) => { const u = UNITS.find((x) => x.id === uid); u.lessons.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id)); };
+  reorder('u1', ['u1l1', 'u1l4', 'u1l2', 'u1l3', 'u1x']); // hola → postura → respiración → encontrar la nota
+  reorder('u3', ['u3l3', 'u3l4', 'u3l1', 'u3l2', 'u3l6', 'u3l5', 'u3x']); // ataque → aire → tracto semiocluido → resonancia → espacio → volumen (Miller)
+}
+export const stageOf = (u) => STAGES.find((st) => st.units.includes(u.id));
+
 UNITS.forEach((u) => u.lessons.forEach((l) => {
   const key = INTROS['i_' + l.id] ? 'i_' + l.id : l.check ? 'i_repaso' : null;
   l.intro = key ? INTROS[key] : ''; l.introVoice = key;

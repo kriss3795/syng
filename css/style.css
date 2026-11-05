@@ -408,3 +408,17 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .game-lv { display: grid; gap: 4px; text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
 .game-lv.locked { opacity: .5; }
 .sing-now { width: 100%; margin-top: 10px; }
+
+/* Etapas del camino */
+.stage-banner { display: flex; gap: 14px; align-items: flex-start; margin: 26px 0 6px; padding: 16px; border-radius: var(--r-lg); background: var(--card); border: 2px solid var(--line); }
+.stage-banner.current { border-color: var(--primary); box-shadow: 0 6px 0 var(--primary-l); }
+.stage-banner h2 { margin: 2px 0; font-size: 24px; }
+.stage-banner p { margin: 2px 0 8px; color: var(--muted); }
+.stage-banner small { color: var(--muted); font-weight: 700; }
+.stage-banner .progress { margin: 6px 0 4px; }
+.stage-n { flex: none; width: 46px; height: 46px; border-radius: 14px; display: grid; place-items: center; color: #fff; font-family: var(--display); font-weight: 700; font-size: 24px; background: var(--primary); }
+.stage-banner.teal .stage-n { background: var(--teal); } .stage-banner.blue .stage-n { background: var(--blue); } .stage-banner.violet .stage-n { background: var(--violet); } .stage-banner.orange .stage-n { background: var(--orange); } .stage-banner.green .stage-n { background: var(--green); }
+.stage-why p { color: var(--ink) !important; font-size: 14.5px; }
+.why-btn { margin-top: 6px; padding-left: 0; }
+.stage-chip { display: block; margin: 10px auto 0; border: 0; background: var(--primary-l); color: var(--primary-d); font: 800 13px var(--body); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
+.method-st.current { border-color: var(--primary); }

@@ -1,6 +1,6 @@
 // Service worker: la app funciona sin internet y se actualiza sola cuando hay conexión.
 // Estrategia: primero la red (para tener siempre la última versión); si no hay red, la copia guardada.
-const CACHE = 'syng-v10';
+const CACHE = 'syng-v11';
 const FILES = [
   './', './index.html', './css/style.css', './manifest.webmanifest',
   './js/app.js', './js/audio.js', './js/pitch.js', './js/store.js', './js/ui.js',

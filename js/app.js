@@ -1,5 +1,5 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
-import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES } from './curriculum.js';
+import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf } from './curriculum.js';
 import { run, diagFindings, identityView } from './exercises.js';
 import { phraseExercises } from './songcoach.js';
 import { gameMenu, playGame } from './game.js';
@@ -53,6 +53,7 @@ async function route() {
     if (hsh === 'hoy') return todayClass();
     if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
     if (hsh === 'profe') return profeView();
+    if (hsh === 'metodo') return methodView();
     if (hsh === 'cantar-ya') { // calentamiento mínimo (aire + labios) y directo a cantar
       const ls = load().lastSong;
       const song = ls ? await getSong(ls) : null;
@@ -105,6 +106,7 @@ function homeView() {
   const s = load();
   const nextIdx = nextLessonIdx();
   const next = ALL_LESSONS[nextIdx];
+  const curStage = next ? stageOf(next.unit) : null;
   const goal = Math.min(1, (s.lastDay === today() ? s.todayXp || 0 : 0) / s.dailyGoal);
   const first = !s.xp;
   const greeting = first ? line('hola') : s.lastDay === today() ? '¡Bien, ya practicaste hoy! Si tienes ganas, sigue con otra clase.' : `¡Hola de nuevo! ${tipOfDay()}`;
@@ -114,6 +116,7 @@ function homeView() {
       h('div', { class: 'goal' }, scoreRing(goal, 64), h('div', {}, h('b', {}, 'Meta de hoy'), h('div', { class: 'small muted' }, `${s.lastDay === today() ? s.todayXp || 0 : 0} de ${s.dailyGoal} XP`))),
       next ? h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#hoy'); } }, icon('play', 18), 'Clase de hoy') : h('b', {}, '¡Terminaste el camino! 🏆')),
     next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null,
+    curStage ? h('button', { class: 'stage-chip', onclick: () => nav('#metodo') }, `Etapa ${curStage.n} de ${STAGES.length}: ${curStage.title}`) : null,
     h('button', { class: 'btn big sing-now', onclick: () => { sfx('select'); nav('#cantar-ya'); } }, icon('mic', 18), s.lastSong ? 'Cantar ya: tu canción' : 'Cantar ya: 3 minutos'));
   const rec = recommend(s.history || []);
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
@@ -123,8 +126,24 @@ function homeView() {
   const reviewCard = nDone >= 2 ? h('button', { class: 'card rec', onclick: () => { sfx('select'); nav('#repaso'); } },
     chincol('hola', 44),
     h('div', {}, h('b', {}, 'Repaso rápido'), h('div', { class: 'small muted' }, 'Cuatro ejercicios de lo que ya aprendiste. Repasar seguido es lo que lo deja fijo.')), icon('chevron')) : null;
-  let gi = 0;
-  const path = UNITS.map((u) => {
+  let gi = 0; let lastStage = 0;
+  const stageBanner = (st) => {
+    const ls = ALL_LESSONS.filter((l) => st.units.includes(l.unit.id));
+    const dn = ls.filter((l) => lessonState(l.id)?.done).length;
+    const why = h('div', { class: 'stage-why', hidden: '' }, h('p', {}, st.why), h('button', { class: 'btn small', onclick: () => nav('#metodo') }, 'Ver el método completo'));
+    return h('section', { class: 'stage-banner ' + st.color + (curStage && curStage.n === st.n ? ' current' : '') },
+      h('div', { class: 'stage-n' }, String(st.n)),
+      h('div', { class: 'grow' }, h('small', {}, `Etapa ${st.n} de ${STAGES.length}`), h('h2', {}, st.title), h('p', {}, st.sub),
+        h('div', { class: 'progress' }, h('div', { class: 'pfill', style: `width:${Math.round((dn / ls.length) * 100)}%` })), h('small', {}, `${dn} de ${ls.length} lecciones`),
+        h('button', { class: 'btn ghost small why-btn', onclick: (e) => { why.hidden = !why.hidden; if (!why.hidden) speak(st.voice); else stopSpeaking(); } }, '¿Por qué en este orden?'), why));
+  };
+  const path = UNITS.flatMap((u) => {
+    const st = stageOf(u);
+    const banner = st && st.n !== lastStage ? stageBanner(st) : null;
+    lastStage = st ? st.n : lastStage;
+    return [banner, unitSection(u)].filter(Boolean);
+  });
+  function unitSection(u) {
     const nodes = u.lessons.map((l, k) => {
       const idx = gi++;
       const st = lessonState(l.id);
@@ -143,7 +162,7 @@ function homeView() {
     return h('section', { class: 'unit ' + u.color },
       h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
       h('div', { class: 'path' }, nodes));
-  });
+  }
   view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
@@ -467,6 +486,27 @@ function metronomeView() {
 }
 
 // ---------- Perfil ----------
+// ---------- El método: por qué este orden ----------
+function methodView() {
+  const cur = (() => { const i = nextLessonIdx(); return i >= 0 ? stageOf(ALL_LESSONS[i].unit) : null; })();
+  view.replaceChildren(h('div', { class: 'page' },
+    h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#aprender') }, icon('back')), h('span', {})),
+    h('h1', {}, 'El método de Syng'),
+    say('El camino sigue el orden de los manuales de canto más usados: <b>primero el instrumento y la confianza, después cómo nace el sonido, luego el lenguaje musical, después extender la voz y al final interpretar</b>. Cada etapa se apoya en la anterior.', 'feliz', { compact: true }),
+    ...STAGES.map((st) => h('div', { class: 'card method-st ' + st.color + (cur && cur.n === st.n ? ' current' : '') },
+      h('div', { class: 'row between' }, h('b', {}, `Etapa ${st.n} · ${st.title}`), cur && cur.n === st.n ? h('span', { class: 'pill ok' }, 'Estás aquí') : null),
+      h('p', { class: 'small muted' }, st.sub),
+      h('p', { class: 'small' }, st.why),
+      h('p', { class: 'small' }, h('b', {}, 'Unidades: '), st.units.map((id) => UNITS.find((u) => u.id === id)?.title).filter(Boolean).join(' → ')),
+      h('button', { class: 'btn ghost small', onclick: () => speak(st.voice) }, icon('speaker', 16), 'Escuchar'))),
+    h('div', { class: 'card' }, h('h3', {}, 'Fuentes'),
+      h('p', { class: 'small' }, '• Richard Miller, "The Structure of Singing": ataque coordinado → manejo del aire (appoggio) → agilidad → resonancia → vocales y consonantes → sostenuto → registros → extensión del rango → vibrato.'),
+      h('p', { class: 'small' }, '• Nicola Vaccai, "Metodo pratico di canto" (1832): escala y terceras → cuartas y quintas → sextas → séptimas y octavas → semitonos → síncopa → agilidad.'),
+      h('p', { class: 'small' }, '• Seth Riggs, "Singing for the Stars": primero construir confianza, después la voz de habla aplicada al canto.'),
+      h('p', { class: 'small' }, '• Investigación sobre quien desafina (Pfordresher y Brown, 2007; Hutchins y Peretz, 2012): lo primero es conectar oído y voz.')),
+    h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver al camino'))));
+}
+
 // ---------- Lo que el profe aprendió de ti ----------
 function profeCard() {
   const { findings, n } = analyze();
