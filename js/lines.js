@@ -117,6 +117,7 @@ export const LINES = {
   d_lejos: 'Al empezar llegas lejos de la nota. Tararea "mmm" suave y desliza la voz hasta encontrarla.',
   d_oido: 'Esta habilidad de oído todavía cuesta. Repítela con calma: se entrena rápido.',
   d_extra: 'Tocaste golpes de más. En los silencios no se toca, pero se sigue contando.',
+  d_corta: 'Cortas las notas antes de que terminen. Sostén cada nota toda su duración.',
   d_timido: 'Cantas más bajito que cuando hablas. Canta por lo menos con la fuerza de tu voz hablada.',
   d_sube_fuerte: 'Al subir el volumen, la nota se te sube. Más aire, no más presión de garganta.',
   d_baja_suave: 'Al cantar suave, la nota se te cae. Suave no es sin apoyo: mantén las costillas abiertas.',

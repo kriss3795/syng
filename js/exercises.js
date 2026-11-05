@@ -4,6 +4,7 @@ import { getCtx, startMic, readPitch, resetSmoother, playNote, playGlide, click,
 import { noteName, solfege } from './pitch.js';
 import { h, Roll, tuner, levelMeter, sleep, icon } from './ui.js';
 import { say, chincol, diagnoseSeq, line } from './coach.js';
+import { observe } from './adapt.js';
 import { stopSpeaking, sfx } from './voice.js';
 import { getRange, setRange, homeNote, voiceProfile, setVoiceProfile, addDiagnosis, diagnoses, setIdentity } from './store.js';
 
@@ -247,7 +248,7 @@ async function runMatch(spec, root, sig) {
     const t0 = c.currentTime;
     roll.targets = [{ t0: -100, t1: 1e9, m0: target, m1: target }];
     let held = 0, lastT = c.currentTime, best = 999, ok = false, first = null, lastCoach = '';
-    const centsHeld = [];
+    const centsHeld = []; const noteF = [];
     while (!sig.aborted && !skipped) {
       const now = c.currentTime;
       const dt = Math.min(0.1, now - lastT); lastT = now;
@@ -262,12 +263,13 @@ async function runMatch(spec, root, sig) {
       const inT = cents != null && cents >= lo && cents <= hi;
       if (cents != null && first == null) first = cents;
       if (cents != null && Math.abs(cents) < 200) signed.push(cents);
+      if (cents != null && Math.abs(cents) < 150) noteF.push({ c: cents, rms: p.rms });
       if (cents != null) { voicedN++; levels.push(p.rms); if (Math.abs(Math.abs(cents) - 1200) < 80) octN++; }
       // el Chincol te acompaña mientras cantas
       const st = cents == null ? 'nada' : inT ? 'ok' : Math.abs(cents) > 150 ? 'lejos' : 'cerca';
       if (st !== lastCoach) {
         lastCoach = st;
-        if (st === 'nada') setCoach('Tu turno: canta la nota. Si te cuesta, tararea "mmm" y desliza la voz.', 'atento');
+        if (st === 'nada') setCoach(spec.imagine ? 'Tu turno: <b>imagina la nota primero</b> y entra directo a ella, sin buscarla desde abajo.' : 'Tu turno: canta la nota. Si te cuesta, tararea "mmm" y desliza la voz.', 'atento');
         else if (st === 'ok') setCoach('¡Ahí! Sostén ese sonido parejo.', 'feliz');
         else if (st === 'lejos') setCoach(cents < 0 ? 'Estás bastante más grave. Sube despacio, como una sirena.' : 'Estás bastante más agudo. Baja despacio, como una sirena.', 'atento');
         else setCoach(cents < 0 ? 'Casi: sube un pelito.' : 'Casi: baja un pelito.', 'atento');
@@ -287,6 +289,10 @@ async function runMatch(spec, root, sig) {
     const s = ok ? 1 : Math.max(0, 1 - best / 200) * 0.5;
     results.push(s);
     if (first != null) approach.push(first);
+    if (noteF.length >= 8 && !spec.noScore) { // al profe: dónde terminó tu voz en esta nota (la 2ª mitad del intento)
+      const half = noteF.slice(Math.floor(noteF.length / 2)).map((f) => f.c).sort((a, b) => a - b);
+      observe([{ t: Date.now(), sid: spec._sid, pos: spec._pos, k: 'match', m: Math.round(target), c: Math.round(half[Math.floor(half.length / 2)]), first: first != null ? Math.round(first) : undefined, rms: +(noteF.reduce((a, f) => a + f.rms, 0) / noteF.length).toFixed(4) }]);
+    }
     if (centsHeld.length > 5) {
       const mean = centsHeld.reduce((a, b) => a + b, 0) / centsHeld.length;
       allCents.push(Math.abs(mean - (ji && Math.abs(mean - ji) < Math.abs(mean) ? ji : 0)));
@@ -450,6 +456,7 @@ async function runSeq(spec, root, sig) {
   const lat = latency();
   const scored = targets.filter((x) => !x.demo);
   const all = []; // todos los cuadros: {t, m (suavizado), raw}
+  const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null;
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
@@ -464,16 +471,41 @@ async function runSeq(spec, root, sig) {
         const tm = active.m0 + (active.m1 - active.m0) * Math.min(1, Math.max(0, frac));
         const cents = (p.midi - tm) * 100;
         ok = Math.abs(cents) <= (active.m0 === active.m1 ? tol / 2 : tol);
-        active.frames.push({ t: now, cents, ok });
+        active.frames.push({ t: now, cents, ok, rc: p.raw != null ? (p.raw - tm) * 100 : null, rms: p.rms });
+        if (Math.abs(cents) < 150) { biasWin.push({ t: now, c: cents }); }
       } else active.frames.push({ t: now, cents: null, ok: false });
     }
+    // ---- el profe en vivo: revisa cada nota que terminaste y detecta manías o sesgos ----
+    while (biasWin.length && biasWin[0].t < now - 2.2) biasWin.shift();
+    for (const tg of scored) {
+      if (tg._checked || now < tg.t1 + 0.05) continue;
+      tg._checked = true;
+      if (tg.m0 !== tg.m1) continue;
+      tg.flags = noteFlags(tg, spec.vibrato);
+      recentFlags.push(tg.flags || []); if (recentFlags.length > 4) recentFlags.shift();
+      for (const f of tg.flags || []) {
+        const times = recentFlags.filter((x) => x.includes(f)).length;
+        if (times >= 2 && LIVE_TIPS[f]) { liveTip = { txt: LIVE_TIPS[f], until: now + 3.2 }; tipCount[f] = (tipCount[f] || 0) + 1; }
+      }
+    }
+    if (!liveTip && biasWin.length >= 40) {
+      const bm = biasWin.reduce((a, b) => a + b.c, 0) / biasWin.length;
+      if (bm <= -30) liveTip = { txt: '⬆ Vas quedando bajo: piensa la nota más arriba y dale aire', until: now + 2.5 };
+      else if (bm >= 30) liveTip = { txt: '⬇ Vas quedando alto: suelta, canta más suave', until: now + 2.5 };
+    }
+    if (!liveTip && spec.liveHints && spec.liveHints.leaps) {
+      const nxt = scored.find((x) => x.t0 > now && x.t0 - now < beat * 0.9);
+      const prv = nxt && scored.filter((x) => x.t1 <= nxt.t0 + 0.01).slice(-1)[0];
+      if (nxt && prv && Math.abs(nxt.m0 - prv.m0) >= 4) liveTip = { txt: (nxt.m0 > prv.m0 ? '⬆' : '⬇') + ' Salto: ¡exagéralo!', until: nxt.t0 + 0.4 };
+    }
+    if (liveTip && now > liveTip.until) liveTip = null;
     roll.addUser(now, p.midi, ok);
     roll.draw(now, { showUser: feedback === 'live' });
     const cur = targets.find((x) => now >= x.t0 && now <= x.t1);
     const cue = cues.find((q) => now >= q.t0 && now <= q.t1);
     const rd = rounds.findIndex((q) => now >= q.t0 - beat && now <= q.t1 + beat);
     if (rounds.length > 1) roundPill.textContent = `Ronda ${Math.max(1, rd + 1)} de ${rounds.length}`;
-    status.textContent = cue ? '👂 ' + cue.txt : mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
+    status.textContent = cue ? '👂 ' + cue.txt : liveTip && cur && !cur.demo ? liveTip.txt : mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
     await raf();
   }
   // ---- evaluar ----
@@ -502,6 +534,7 @@ async function runSeq(spec, root, sig) {
       }
       if (onset != null) {
         const err = onset - tg.t0;
+        tg.onset = err;
         timingErrs.push(err);
         timeSum += Math.abs(err) <= ttol ? 1 : Math.abs(err) <= ttol * 2 ? 0.5 : 0;
         timeN++;
@@ -514,6 +547,20 @@ async function runSeq(spec, root, sig) {
   const score = stopped ? 0 : (spec.noTiming || !timeN ? pScore : 0.75 * pScore + 0.25 * tScore);
   const cents = centsAll.length ? centsAll.reduce((x, y) => x + y, 0) / centsAll.length : null;
   const tAvg = timingErrs.length ? timingErrs.reduce((x, y) => x + y, 0) / timingErrs.length : null;
+  // guardar cada nota para que el profe aprenda tus patrones
+  if (!stopped && !spec.noScore) {
+    let prevT = null;
+    observe(scored.map((tg) => {
+      if (tg.m0 !== tg.m1) { prevT = null; return null; }
+      const v = tg.frames.filter((f) => f.cents != null && Math.abs(f.cents) < 150 && f.t > tg.t0 + Math.min(0.12, (tg.t1 - tg.t0) * 0.15));
+      const contiguous = prevT && prevT.c != null && tg.t0 - prevT.t1 < beat * 0.6;
+      const o = v.length >= 5 ? { t: Date.now(), sid: spec._sid, pos: spec._pos, k: 'seq', m: tg.m0, c: Math.round(v.map((f) => f.cents).sort((a, b) => a - b)[Math.floor(v.length / 2)]),
+        prev: contiguous ? prevT.m0 : undefined, pc: contiguous ? prevT.c : undefined, on: tg.onset != null ? Math.round(tg.onset * 1000) : undefined,
+        rms: v.length ? +(v.reduce((a, f) => a + (f.rms || 0), 0) / v.length).toFixed(4) : undefined, fl: tg.flags || [] } : null;
+      prevT = { m0: tg.m0, t1: tg.t1, c: o ? o.c : null };
+      return o;
+    }).filter(Boolean));
+  }
   roll.span = Math.max(roll.span, endT + 1);
   roll.nowFrac = 0;
   roll.draw(0, { showUser: true, full: true });
@@ -523,9 +570,72 @@ async function runSeq(spec, root, sig) {
   return {
     score, cents, timing: tAvg != null ? tAvg * 1000 : null,
     detail: `${hits} de ${scored.length} notas afinadas` + (cents != null ? `. Cuando llegaste a la nota, te desviaste en promedio ${Math.round(cents)} cents` : '') + tmsg.replace(' · ', '. '),
-    issues: diagnoseSeq(scored, all, { timingErrs: spec.noTiming ? [] : timingErrs, tol }),
+    issues: [...habitIssues(scored), ...diagnoseSeq(scored, all, { timingErrs: spec.noTiming ? [] : timingErrs, tol })].filter((x, i, a) => a.findIndex((y) => y.key === x.key) === i),
     keepView: canvas,
   };
+}
+
+// ---------- Manías y vicios en cada nota (lo que un profe escucha) ----------
+// sc: entra desde abajo y sube (scoop) · sl: entra desde arriba · cae: el final se desafina hacia abajo
+// corta: deja de cantar antes de que termine la nota · aire: se corta en medio (respira o se queda sin aire) · tiembla: altura inestable
+export function noteFlags(tg, vibratoOk = false) {
+  const d = tg.t1 - tg.t0; const F = tg.frames;
+  const v = F.filter((f) => f.cents != null);
+  if (v.length < 5) return null;
+  const fl = [];
+  const body = v.filter((f) => f.t > tg.t0 + d * 0.3 && f.t < tg.t1 - d * 0.2);
+  const bm = body.length >= 3 ? body.reduce((a, f) => a + f.cents, 0) / body.length : null;
+  const head = v.filter((f) => f.t < tg.t0 + Math.min(0.3, d * 0.35)).map((f) => (f.rc != null ? f.rc : f.cents));
+  if (bm != null && Math.abs(bm) < 70 && head.length >= 2) {
+    if (head[0] <= -70 && head[0] < bm - 50) fl.push('sc');
+    else if (head[0] >= 70 && head[0] > bm + 50) fl.push('sl');
+  }
+  if (d >= 0.6 && bm != null && Math.abs(bm) < 70) {
+    const tail = v.filter((f) => f.t > tg.t1 - d * 0.22);
+    if (tail.length >= 3 && tail.reduce((a, f) => a + f.cents, 0) / tail.length - bm <= -35) fl.push('cae');
+    const late = F.filter((f) => f.t > tg.t1 - d * 0.3), midF = F.filter((f) => f.t > tg.t0 + d * 0.2 && f.t < tg.t0 + d * 0.6);
+    const vf = (a) => a.filter((f) => f.cents != null).length / Math.max(1, a.length);
+    if (late.length >= 4 && midF.length >= 4 && vf(midF) > 0.7 && vf(late) < 0.3) fl.push('corta');
+    // hueco en medio
+    let run = 0, maxRun = 0, seenVoice = false, voiceAfter = false;
+    for (const f of F.filter((f) => f.t > tg.t0 + d * 0.15 && f.t < tg.t1 - d * 0.15)) {
+      if (f.cents == null) { if (seenVoice) run += 1; } else { if (run) voiceAfter = true; maxRun = Math.max(maxRun, run); run = 0; seenVoice = true; }
+    }
+    if (maxRun >= 10 && voiceAfter) fl.push('aire');
+  }
+  if (!vibratoOk && body.length >= 10) {
+    const sd = Math.sqrt(body.reduce((a, f) => a + (f.cents - bm) ** 2, 0) / body.length);
+    if (sd > 32) fl.push('tiembla');
+  }
+  return fl;
+}
+const LIVE_TIPS = {
+  sc: '🎯 Entras desde abajo: imagina la nota y apunta directo al centro',
+  sl: '🎯 Entras desde arriba: apunta directo a la nota',
+  cae: '💨 Se te cae el final: mantén el aire hasta el último instante',
+  corta: '⏱ Cortas las notas: sostenlas hasta que termine la barra',
+  aire: '🫁 Te quedas sin aire en medio: respira antes, bajo y rápido',
+  tiembla: '〰 La nota tiembla: aire parejo, como un hilo',
+};
+const HABIT_TXT = {
+  sc: ['Entras a las notas <b>desde abajo</b> y luego subes (en ${n} de ${t} notas).', 'Es una manía muy común: buscas la nota con la voz en vez de oírla antes. Imagina la nota por dentro y empieza ya en ella.', 'd_scoop'],
+  cae: ['Al final de las notas largas <b>se cae la afinación</b> (${n} de ${t}).', 'Es soltar el apoyo antes de tiempo. Mantén las costillas abiertas hasta el final.', 'd_cae'],
+  corta: ['<b>Cortas las notas</b> antes de que terminen (${n} de ${t}).', 'Sostén cada nota toda su duración: la barra te muestra cuánto dura.', 'd_corta'],
+  aire: ['Te <b>quedas sin aire</b> o te cortas en medio de la nota (${n} de ${t}).', 'Respira antes de la frase, bajo y rápido, y dosifica el aire.', 'd_aire'],
+  tiembla: ['La nota <b>tiembla</b> mientras la sostienes (${n} de ${t}).', 'Es el aire saliendo a tirones: piensa en un hilo de aire parejo.', 'd_inestable'],
+};
+function habitIssues(scored) {
+  const checked = scored.filter((tg) => tg.flags);
+  if (checked.length < 3) return [];
+  const out = [];
+  for (const k of Object.keys(HABIT_TXT)) {
+    const n = checked.filter((tg) => tg.flags.includes(k)).length;
+    if (n >= 2 && n / checked.length >= 0.3) {
+      const [txt, tip, voice] = HABIT_TXT[k];
+      out.push({ key: k === 'sc' ? 'scoop' : k, voice, weight: 58 + n, text: txt.replace('${n}', n).replace('${t}', checked.length), tip });
+    }
+  }
+  return out.sort((a, b) => b.weight - a.weight);
 }
 
 // ---------- Entrenamiento de oído ----------
@@ -760,6 +870,7 @@ async function runSustain(spec, root, sig) {
     const tuneScore = vib ? Math.max(0, Math.min(1, 1 - (Math.abs(m) - tol / 2) / 40)) : Math.min(1, inT / 0.8);
     per.push(0.5 * tuneScore + 0.25 * pitchSteady + 0.25 * airSteady);
     allPitch.push({ m, sd }); allRms.push(cv);
+    if (!spec.noScore) observe([{ t: Date.now(), sid: spec._sid, pos: spec._pos, k: 'sus', m: target, c: Math.round(m), sd: Math.round(sd), rms: +rm.toFixed(4) }]);
     if (vib ? Math.abs(m) <= tol / 2 : inT > 0.6) sfx('ok');
     await sleep(400);
   }

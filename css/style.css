@@ -375,3 +375,4 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .identity .card h3 { margin-top: 0; }
 .tess-bar.miss { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, transparent 3px, transparent 6px); }
 .ok-card { border-color: #BFEBD3; background: var(--ok-l); }
+.card.discovery { border-color: var(--primary); background: var(--primary-l); text-align: left; } .card.discovery p { margin: 4px 0; }
