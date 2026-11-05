@@ -111,6 +111,48 @@ const MENOR5 = P([0, 2, 3, 5, 7, 5, 3, 2, [0, 2]]);
 // y en lo que piden los exámenes de canto ABRSM y Rockschool: escalas, arpegios, intervalos, lectura a primera vista,
 // pruebas de oído y coros/armonía. Cada unidad termina con una prueba de repaso.
 export const UNITS = [
+  { id: 'enc', title: 'Encontrar tu voz', desc: 'Qué te pasa al cantar, tu nota de casa, cantar sin timidez y conectar oído y voz', color: 'teal', lessons: [
+    { id: 'enc1', title: '¿Qué me pasa al cantar?', once: true, build: () => [
+      tec('tec_diag', 'Lo que dice la ciencia'),
+      { type: 'diag' },
+    ] },
+    { id: 'enc2', title: 'Tu nota de casa', build: () => [
+      tec('tec_casa', 'Tu nota de casa'),
+      { type: 'speak' },
+      { type: 'match', home: [0], tol: 140, hold: 1, text: 'Di <b>"hola"</b> como hablando, y alarga la "a": <b>"holaaa"</b>, en tu nota de casa. Esa nota sostenida ya es cantar.' },
+      { type: 'match', home: [0, 2, -1], tol: 120, hold: 1 },
+    ] },
+    { id: 'encid', title: 'Tu identidad vocal', once: true, build: () => [
+      tec('tec_identidad', 'Tu identidad vocal'),
+      { type: 'identity' },
+    ] },
+    { id: 'enc3', title: 'Voz con cuerpo', build: () => [
+      tec('tec_timidez', 'Sin miedo'),
+      { type: 'sustain', home: [0], secs: 4, tol: 140, loud: true, text: 'Canta <b>"maaa"</b> en tu nota de casa, <b>con la misma fuerza con que hablas</b>. La rayita en la barra de aire es tu voz hablada: pásala.' },
+      { type: 'sustain', home: [2], secs: 4, tol: 120, loud: true },
+      { type: 'match', home: [0, 3], tol: 120, hold: 1 },
+    ] },
+    { id: 'enc4', title: 'Eco de tu voz', build: () => [
+      tec('tec_eco', 'Tu propia voz como guía'),
+      { type: 'self', rounds: 3, tol: 120 },
+    ] },
+    { id: 'enc5', title: 'Colocar la voz', build: () => [
+      tec('tec_colocar', 'Colocar la voz'),
+      { type: 'sustain', home: [0], secs: 4, tol: 140, loud: true, text: 'Un <b>"mmm"</b> con la boca cerrada y los dientes separados, buscando las cosquillas en los labios.' },
+      seq(L(P([[0, 2], [0, 2], [0, 3]]), ['mm', 'mm', 'ma']), { mode: 'along', atHome: true, bpm: 70, tol: 140, noTiming: true, reps: [0, 0, 0], text: '<b>"mmm… mmm… maaa"</b> en tu nota de casa: abre a "a" sin perder las cosquillas del "mmm".' }),
+      seq(L(P([0, 2, [4, 2], 2, [0, 2]]), ['ma', 'ma', 'ma', 'ma', 'ma']), { mode: 'echo', atHome: true, bpm: 70, tol: 120, noTiming: true, reps: [0, 0] }),
+    ] },
+    { id: 'enc6', title: 'Mover la voz', build: () => [
+      tec('tec_mover', 'Subir y bajar a voluntad'),
+      seq([glide(0, 4, 3), glide(4, 0, 3)], { mode: 'along', atHome: true, bpm: 66, tol: 160, noTiming: true, labels: 'none', reps: [0, 0, 0], text: 'Sigue la línea con <b>"uuu"</b>: sube despacio y baja despacio. Mira cómo tu voz dibuja el camino.' }),
+      seq([glide(0, 7, 3), { s: 7, d: 1 }, glide(7, 0, 3), { s: 0, d: 1 }], { mode: 'along', atHome: true, bpm: 66, tol: 150, noTiming: true, labels: 'none', reps: [0, 0, 0] }),
+      ear('updown', { rounds: 6, ivs: [2, 3, 5] }),
+    ] },
+    { id: 'encx', title: 'Diagnóstico otra vez', once: true, build: () => [
+      { type: 'info', title: 'Veamos cuánto avanzaste', body: `<p>${LINES.tec_rediag}</p>`, voice: 'tec_rediag' },
+      { type: 'diag' },
+    ] },
+  ] },
   { id: 'u1', title: 'Tu voz, hoy', desc: 'Conoce tu voz, respira bien y canta tu primera melodía', color: 'teal', lessons: [
     { id: 'u1l1', title: 'Hola, voz', build: () => [
       { type: 'info', title: '¡Hola!', body: `<p>${LINES.hola}</p><p>${LINES.como_funciona}</p><p>🎧 ${LINES.audifonos}</p>`, voice: ['hola', 'como_funciona', 'audifonos'] },

@@ -1,7 +1,7 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
 import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES } from './curriculum.js';
-import { run } from './exercises.js';
-import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS } from './store.js';
+import { run, diagFindings, identityView } from './exercises.js';
+import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS, voiceProfile, homeNote, diagnoses, identities } from './store.js';
 import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
 import { noteName } from './pitch.js';
 import { songsView, newSongView, songDetail, practiceView, syncView, linesView } from './songs.js';
@@ -49,6 +49,8 @@ async function route() {
     if (hsh === 'aprender' || hsh === '') return homeView();
     if (hsh === 'hoy') return todayClass();
     if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
+    if (hsh === 'identidad') return session({ title: 'Tu identidad vocal', color: 'teal', exercises: [{ type: 'identity' }], id: 'identidad' });
+    if (hsh === 'diagnostico') return session({ title: 'Diagnóstico de tu voz', color: 'teal', exercises: [{ type: 'diag' }], id: 'diagnostico' });
     if (hsh === 'repaso') return session({ title: 'Repaso', color: 'teal', exercises: reviewExercises(), id: 'repaso' });
     if (hsh === 'calentamiento') return session({ title: 'Calentamiento', color: 'orange', exercises: warmup(), id: 'warmup' });
     if (hsh.startsWith('extra-')) return session({ title: EXTRA[hsh.slice(6)] || 'Práctica', color: 'blue', exercises: extraSession(hsh.slice(6)), id: 'extra-' + hsh.slice(6) });
@@ -102,7 +104,7 @@ function homeView() {
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
     chincol('piensa', 44),
     h('div', {}, h('b', {}, 'Práctica recomendada: ' + EXTRA[rec.kind]), h('div', { class: 'small muted' }, 'Según tus últimos ejercicios, esto es lo que más te va a ayudar.')), icon('chevron')) : null;
-  const nDone = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check).length;
+  const nDone = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check && !l.once).length;
   const reviewCard = nDone >= 2 ? h('button', { class: 'card rec', onclick: () => { sfx('select'); nav('#repaso'); } },
     chincol('hola', 44),
     h('div', {}, h('b', {}, 'Repaso rápido'), h('div', { class: 'small muted' }, 'Cuatro ejercicios de lo que ya aprendiste. Repasar seguido es lo que lo deja fijo.')), icon('chevron')) : null;
@@ -120,7 +122,7 @@ function homeView() {
           onclick: () => { if (un) { sfx('select'); nav('#leccion-' + l.id); } else { sfx('bad'); flash('Completa la lección anterior primero'); } } },
           icon(st?.done ? 'star' : un ? lessonIcon(l) : 'lock', 30)),
         h('div', { class: 'node-label' }, l.title,
-          !l.check && un ? h('span', { class: 'lvl-dots' }, ...[1, 2, 3].map((k) => h('i', { class: (k <= lessonLevel(l.id) ? 'on' : '') + (k === 3 ? ' crown' : '') }))) : null,
+          !l.check && !l.once && un ? h('span', { class: 'lvl-dots' }, ...[1, 2, 3].map((k) => h('i', { class: (k <= lessonLevel(l.id) ? 'on' : '') + (k === 3 ? ' crown' : '') }))) : null,
           st?.done ? h('span', { class: 'stars-mini' }, '★'.repeat(st.stars) + '☆'.repeat(3 - st.stars)) : null));
     });
     return h('section', { class: 'unit ' + u.color },
@@ -133,6 +135,7 @@ function homeView() {
 }
 function lessonIcon(l) {
   if (l.check) return 'trophy';
+  if (l.once) return 'mic';
   const t = l.build.toString();
   if (/range/.test(t)) return 'mic';
   if (/rhythm\(/.test(t)) return 'drum';
@@ -159,12 +162,12 @@ function todayClass() {
 
 // Nivel que toca: las pruebas de unidad tienen uno solo; las lecciones, 1 (con ayuda) → 2 (sin ayuda) → 3 (maestría, opcional)
 function nextLevel(l) {
-  if (l.check) return LEVELS_TO_PASS;
+  if (l.check || l.once) return LEVELS_TO_PASS;
   return Math.min(3, lessonLevel(l.id) + 1);
 }
 // Repaso estilo Duolingo: un ejercicio de cada una de 4 lecciones ya aprobadas (más probables las de menos estrellas)
 function reviewExercises() {
-  const done = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check);
+  const done = ALL_LESSONS.filter((l) => lessonState(l.id)?.done && !l.check && !l.once);
   const pool = done.flatMap((l) => Array(4 - Math.min(3, lessonState(l.id).stars || 0)).fill(l));
   const picked = [];
   while (picked.length < Math.min(4, done.length) && pool.length) {
@@ -172,7 +175,7 @@ function reviewExercises() {
     if (!picked.includes(l)) picked.push(l);
   }
   return picked.flatMap((l) => {
-    const exs = applyLevel(l.build(), 2).filter((e) => e.type !== 'info' && e.type !== 'range' && e.type !== 'breath');
+    const exs = applyLevel(l.build(), 2).filter((e) => !['info', 'range', 'breath', 'speak', 'diag'].includes(e.type));
     return exs.length ? [exs[Math.floor(Math.random() * exs.length)]] : [];
   });
 }
@@ -193,7 +196,7 @@ function lessonIntro(id) {
     h('div', { class: 'li-top' }, h('button', { class: 'iconbtn', onclick: () => nav('#aprender'), 'aria-label': 'Cerrar' }, icon('close')), h('span', { class: 'li-unit' }, l.unit.title)),
     h('h1', {}, l.title),
     say(l.intro || 'Vamos con esta clase.', 'feliz', { voice: l.introVoice }),
-    l.check ? null : levelPicker(l, maxLevel, (lv) => { level = lv; exs = exsFor(lv); }),
+    l.check || l.once ? null : levelPicker(l, maxLevel, (lv) => { level = lv; exs = exsFor(lv); }),
     h('div', { class: 'li-meta' }, h('span', { class: 'pill' }, `${nEx} ejercicio${nEx === 1 ? '' : 's'}`), h('span', { class: 'pill' }, `≈ ${Math.max(2, Math.round(nEx * 1.5 + (warmChk.checked ? 2 : 0)))} min`), lessonState(id)?.done ? h('span', { class: 'pill ok' }, '★'.repeat(lessonState(id).stars)) : null),
     unitIdx >= 2 ? h('label', { class: 'warm-toggle' }, warmChk, h('span', {}, h('b', {}, 'Calentar antes (2 min)'), h('br'), h('small', {}, needWarm ? 'Hoy no has calentado: te lo recomiendo.' : 'Ya calentaste hoy.'))) : null,
     h('div', { class: 'grow' }),
@@ -414,6 +417,25 @@ function metronomeView() {
 }
 
 // ---------- Perfil ----------
+function identityCard() {
+  const id = identities().slice(-1)[0];
+  const btn = h('button', { class: 'btn', onclick: () => nav('#identidad') }, icon('wave', 18), id ? 'Repetir análisis de mi voz' : 'Descubrir mi identidad vocal');
+  if (!id) return h('div', {}, h('h3', {}, 'Tu identidad vocal'), h('p', { class: 'small muted' }, 'Dónde cantas mejor, tu tipo de voz probable y tu timbre (color y textura), medidos nota por nota.'), btn);
+  const open = h('button', { class: 'btn ghost', onclick: () => view.replaceChildren(h('div', { class: 'page' }, identityView(id, () => nav('#perfil')))) }, 'Ver detalle');
+  return h('div', {}, h('h3', {}, 'Tu identidad vocal'),
+    h('p', {}, `${id.type[0].toUpperCase() + id.type.slice(1)} · zona dulce ${id.sweetLo != null ? noteName(id.sweetLo) + '–' + noteName(id.sweetHi) : '—'}` + (id.color ? ` · color ${id.color}` : '') + (id.texture ? ` · ${id.texture}` : '')),
+    h('div', { class: 'row' }, open, btn));
+}
+function diagCard() {
+  const last = diagnoses().slice(-1)[0];
+  const btn = h('button', { class: 'btn', onclick: () => nav('#diagnostico') }, icon('mic', 18), last ? 'Repetir diagnóstico' : 'Hacer el diagnóstico de mi voz');
+  if (!last) return h('div', {}, h('h3', {}, '¿Qué le pasa a mi voz?'), h('p', { class: 'small muted' }, 'Un diagnóstico de 4 pasos: oído, llegar a la nota, estabilidad y volumen.'), btn);
+  const f = diagFindings(last);
+  return h('div', {}, h('h3', {}, 'Tu último diagnóstico'),
+    h('p', { class: 'small muted' }, new Date(last.at).toLocaleDateString('es-CL') + ' · ' + f.main.lead),
+    h('div', { class: 'diag-list compact' }, ...f.items.map((x) => h('div', { class: 'diag-item ' + x.tone }, h('div', { class: 'diag-ic' }, x.tone === 'ok' ? '✓' : x.tone === 'warn' ? '!' : '•'), h('div', {}, h('b', {}, x.title))))),
+    btn);
+}
 function profileView() {
   const s = load(); const st = settings(); const r = getRange();
   const done = ALL_LESSONS.filter((l) => lessonState(l.id)?.done).length;
@@ -449,6 +471,9 @@ function profileView() {
       h('div', { class: 'sbox' }, icon('star', 22), h('b', {}, `${done}/${ALL_LESSONS.length}`), h('small', {}, 'lecciones'))),
     h('div', { class: 'card' }, h('h3', {}, 'Tu voz'),
       h('p', {}, r.guessed ? 'Rango sin medir todavía.' : `Rango cómodo: ${noteName(r.low)} a ${noteName(r.high)} (${r.high - r.low} semitonos). Zona central: ${noteName(r.comfort)}.`),
+      voiceProfile()?.speak ? h('p', {}, `Voz hablada ≈ ${noteName(Math.round(voiceProfile().speak))} · tu nota de casa: ${noteName(homeNote())}.`) : null,
+      diagCard(),
+      identityCard(),
       h('h3', {}, 'Tu afinación en el tiempo'), chart),
     installBanner(true),
     h('div', { class: 'card settings' }, h('h3', {}, 'Ajustes'),

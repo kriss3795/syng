@@ -118,3 +118,17 @@ export async function listSongs() {
     r.onerror = () => rej(r.error);
   });
 }
+
+// Perfil de voz: tu voz hablada (la "nota de casa") y los diagnósticos
+export function voiceProfile() { return load().voice || null; }
+export function setVoiceProfile(v) { load().voice = { ...(load().voice || {}), ...v }; save(); }
+export function homeNote() {
+  const r = getRange(); const v = voiceProfile();
+  const n = v && v.speak ? Math.round(v.speak) + 1 : r.comfort; // un poquito sobre la voz hablada: cómodo y natural
+  if (r.guessed) return Math.max(40, Math.min(72, n)); // aún sin medir tu rango: confiamos en tu voz hablada
+  return Math.max(r.low + 1, Math.min(r.high - 2, n));
+}
+export function addDiagnosis(d) { const s = load(); s.diags = [...(s.diags || []), d].slice(-10); save(); }
+export function diagnoses() { return load().diags || []; }
+export function setIdentity(id) { const s = load(); s.identities = [...(s.identities || []), id].slice(-6); save(); }
+export function identities() { return load().identities || []; }

@@ -210,3 +210,13 @@ export async function measureLatency(onStatus) {
   results.sort((a, b) => a - b);
   return results[Math.floor(results.length / 2)];
 }
+
+// Espectro del micrófono (dB por banda) para medir el timbre: brillo, H1−H2, energía alrededor de 3 kHz.
+let specBuf = null;
+export function readSpectrum() {
+  if (!mic) return null;
+  const n = mic.analyser.frequencyBinCount;
+  if (!specBuf || specBuf.length !== n) specBuf = new Float32Array(n);
+  mic.analyser.getFloatFrequencyData(specBuf);
+  return { db: specBuf, binHz: getCtx().sampleRate / mic.analyser.fftSize };
+}

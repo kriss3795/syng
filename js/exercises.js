@@ -1,11 +1,11 @@
 // Motores de ejercicios. Cada runner recibe (spec, root, sig) y devuelve una promesa con
 // { score: 0..1, cents?: desviación media, timing?: ms, detail: texto }.
-import { getCtx, startMic, readPitch, resetSmoother, playNote, playGlide, click, startDrone, latency } from './audio.js';
+import { getCtx, startMic, readPitch, resetSmoother, playNote, playGlide, click, startDrone, latency, micStream, decodeFile, readSpectrum } from './audio.js';
 import { noteName, solfege } from './pitch.js';
 import { h, Roll, tuner, levelMeter, sleep, icon } from './ui.js';
 import { say, chincol, diagnoseSeq, line } from './coach.js';
 import { stopSpeaking, sfx } from './voice.js';
-import { getRange, setRange } from './store.js';
+import { getRange, setRange, homeNote, voiceProfile, setVoiceProfile, addDiagnosis, diagnoses, setIdentity } from './store.js';
 
 const raf = () => new Promise((r) => requestAnimationFrame(r));
 
@@ -26,6 +26,8 @@ function startButton(root, text, label = 'Empezar', mood = 'atento', extra = nul
 }
 
 export async function run(spec, root, sig) {
+  if (spec.home) { const hn = homeNote(); spec = { ...spec, notes: spec.home.map((o) => hn + o) }; } // en tu "nota de casa"
+  if (spec.atHome) spec = { ...spec, base: homeNote() };
   const fn = RUNNERS[spec.type];
   if (!fn) return { score: 1 };
   return fn(spec, root, sig);
@@ -200,10 +202,11 @@ const JUST = { 3: 16, 4: -14, 8: 14, 9: -16 };
 async function runMatch(spec, root, sig) {
   const tol = spec.tol ?? 50;
   const hold = spec.hold ?? 1;
-  await startButton(root, spec.text || line('ins_match') + ` <small>(Zona verde: ±${tol / 2} cents durante ${hold} s.)</small>`, 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_match'));
+  if (!spec.noStart) await startButton(root, spec.text || line('ins_match') + ` <small>(Zona verde: ±${tol / 2} cents durante ${hold} s.)</small>`, 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_match'));
   if (!(await ensureMic(root))) return { score: 0 };
   if (spec.drone != null && !(await requireHeadphones(root, sig, spec.drone, true))) return { score: null, detail: 'Ejercicio saltado (sin audífonos)', skipped: true };
   const results = [];
+  let voicedN = 0, octN = 0; const levels = [];
   const allCents = [];
   const stab = [];
   const signed = []; // desviación con signo (para detectar si tiendes a quedar bajo o alto)
@@ -232,7 +235,11 @@ async function runMatch(spec, root, sig) {
     let quietUntil = 0, heardUntil = 0;
     const delay = spec.delay || 0; // memoria auditiva: silencio entre la nota y tu turno
     // mientras suena la nota de referencia no se evalúa (el micrófono podría captarla)
-    const play = () => { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; quietUntil = heardUntil + delay; };
+    const play = () => {
+      if (spec.playBuf) { const src = c.createBufferSource(); src.buffer = spec.playBuf; const g = c.createGain(); g.gain.value = 1.6; src.connect(g).connect(c.destination); src.start(c.currentTime + 0.05); heardUntil = c.currentTime + spec.playBuf.duration + 0.3; }
+      else { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; }
+      quietUntil = heardUntil + delay;
+    };
     play();
     again.onclick = play;
     let skipped = false; skip.onclick = () => (skipped = true);
@@ -255,6 +262,7 @@ async function runMatch(spec, root, sig) {
       const inT = cents != null && cents >= lo && cents <= hi;
       if (cents != null && first == null) first = cents;
       if (cents != null && Math.abs(cents) < 200) signed.push(cents);
+      if (cents != null) { voicedN++; levels.push(p.rms); if (Math.abs(Math.abs(cents) - 1200) < 80) octN++; }
       // el Chincol te acompaña mientras cantas
       const st = cents == null ? 'nada' : inT ? 'ok' : Math.abs(cents) > 150 ? 'lejos' : 'cerca';
       if (st !== lastCoach) {
@@ -299,7 +307,13 @@ async function runMatch(spec, root, sig) {
   const score = results.reduce((a, b) => a + b, 0) / Math.max(1, results.length);
   const cents = allCents.length ? allCents.reduce((a, b) => a + b, 0) / allCents.length : null;
   const sd = stab.length ? stab.reduce((a, b) => a + b, 0) / stab.length : null;
-  return { score, cents, issues, detail: `${results.filter((r) => r === 1).length} de ${results.length} notas logradas` + (cents != null ? `. Al sostener quedaste a ${Math.round(cents)} cents del centro, con un vaivén de ±${Math.round(sd)} cents.` : '.') };
+  levels.sort((a, b) => a - b);
+  const reached = results.filter((r) => r === 1).length;
+  const rmsMed = levels.length ? levels[Math.floor(levels.length / 2)] : null;
+  const prof = voiceProfile();
+  if (prof && prof.speakRms && rmsMed != null && rmsMed < prof.speakRms * 0.6) issues.push({ key: 'timido', voice: 'd_timido', text: 'Cantas <b>más bajito que cuando hablas</b>.', tip: 'Con poca voz la nota se vuelve inestable y cuesta más afinar. Canta al menos con la fuerza con que hablas.' });
+  const firstAbs = approach.length ? approach.map((a) => Math.abs(a)).sort((a, b) => a - b)[Math.floor(approach.length / 2)] : null;
+  return { score, cents, issues, reached, n: results.length, firstAbs, octave: voicedN > 30 && octN / voicedN > 0.4, rmsMed, sd, detail: `${reached} de ${results.length} notas logradas` + (cents != null ? `. Al sostener quedaste a ${Math.round(cents)} cents del centro, con un vaivén de ±${Math.round(sd)} cents.` : '.') };
 }
 
 // ---------- Secuencias: escalas, intervalos, sirenas, melodías ----------
@@ -521,7 +535,7 @@ async function runEar(spec, root, sig) {
   const base = spec.base;
   let correct = 0;
   getCtx();
-  await startButton(root, spec.text || line('ins_ear'), 'Empezar', 'atento', null, spec.voice || 'ins_ear');
+  if (!spec.noStart) await startButton(root, spec.text || line('ins_ear'), 'Empezar', 'atento', null, spec.voice || 'ins_ear');
   for (let r = 0; r < rounds && !sig.aborted; r++) {
     const c = getCtx();
     let q, opts, ans, play;
@@ -665,9 +679,12 @@ async function runSustain(spec, root, sig) {
   const tol = spec.tol ?? 60;
   const secs = spec.secs ?? 5;
   const notes = spec.notes;
-  await startButton(root, spec.text || line('ins_sustain'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_sustain'));
+  if (!spec.noStart) await startButton(root, spec.text || line('ins_sustain'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_sustain'));
   if (!(await ensureMic(root))) return { score: 0 };
   const c = getCtx();
+  const prof = voiceProfile();
+  const loudT = spec.loud ? Math.max(0.012, (prof && prof.speakRms ? prof.speakRms : 0.04) * 0.85) : null; // tu voz hablada como piso
+  const levelsAll = []; let loudOk = 0, loudN = 0;
   const per = [];
   let allPitch = [], allRms = [], tails = 0; const vibs = [];
   for (let i = 0; i < notes.length && !sig.aborted; i++) {
@@ -688,6 +705,8 @@ async function runSustain(spec, root, sig) {
     setCoach('Inhala bajo… y canta la nota pareja.', 'atento');
     resetSmoother();
     let started = null; const fr = [];
+    let lastLoud = '';
+    if (loudT) air.querySelector('.airtrack').append(h('i', { class: 'airmark', style: `left:${Math.min(98, loudT * 600)}%` }));
     const tStart = c.currentTime;
     let avgR = 0;
     while (!sig.aborted) {
@@ -704,6 +723,11 @@ async function runSustain(spec, root, sig) {
       if (started == null && now - tStart > 10) break;
       avgR = avgR * 0.85 + p.rms * 0.15;
       airFill.style.width = Math.min(100, avgR * 600) + '%';
+      if (started != null && cents != null) { levelsAll.push(p.rms); if (loudT) { loudN++; if (avgR >= loudT) loudOk++; } }
+      if (loudT && started != null) {
+        const st = avgR >= loudT ? 'ok' : 'low';
+        if (st !== lastLoud) { lastLoud = st; setCoach(st === 'ok' ? '¡Eso! Voz con cuerpo, sin gritar.' : '¡Más voz! Como si llamaras a alguien al otro lado de la pieza.', st === 'ok' ? 'celebra' : 'atento'); airFill.classList.toggle('low', st === 'low'); }
+      }
       roll.addUser(now, p.midi, cents == null ? null : Math.abs(cents) <= tol / 2);
       roll.draw(now);
       await raf();
@@ -756,8 +780,333 @@ async function runSustain(spec, root, sig) {
       detail += okV.length ? ` Vibrato detectado en ${okV.length} de ${vibs.length} notas: ≈${(okV.reduce((a, x) => a + x.rate, 0) / okV.length).toFixed(1)} oscilaciones por segundo, ±${Math.round(okV.reduce((a, x) => a + x.ext, 0) / okV.length)} cents.` : ' No detecté vibrato (no es obligatorio: aparece solo con la voz suelta).';
     }
   }
-  issues.sort((a, b) => b.weight - a.weight);
-  return { score, issues, detail: detail || 'No te escuché sostener la nota.' };
+  levelsAll.sort((a, b) => a - b);
+  const rmsMed = levelsAll.length ? levelsAll[Math.floor(levelsAll.length / 2)] : null;
+  let fscore = score;
+  if (loudT) {
+    const lf = loudN ? loudOk / loudN : 0;
+    fscore = 0.6 * score + 0.4 * Math.min(1, lf / 0.7);
+    if (lf < 0.5) issues.push({ key: 'timido', voice: 'd_timido', weight: 70, text: `Solo el ${Math.round(lf * 100)}% del tiempo cantaste con la fuerza de tu voz hablada.`, tip: 'No es gritar: es la misma energía con que hablas. Con más voz, la nota se afirma.' });
+    issues.sort((a, b) => b.weight - a.weight);
+  }
+  const sdAll = allPitch.length ? allPitch.reduce((a, p) => a + p.sd, 0) / allPitch.length : null;
+  return { score: fscore, issues, sd: sdAll, rmsMed, detail: detail || 'No te escuché sostener la nota.' };
+}
+
+
+// ---------- Tu nota de casa: la altura de tu voz hablada ----------
+// La voz hablada es el gesto vocal que más dominas. Partir cantando cerca de ella es lo más natural.
+async function runSpeak(spec, root, sig) {
+  if (!spec.noStart) await startButton(root, spec.text || line('ins_speak'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_speak'));
+  if (!(await ensureMic(root))) return { score: 0 };
+  const c = getCtx();
+  const phrase = h('div', { class: 'speak-card' }, '“Hola, ¿cómo estás? Uno, dos, tres, cuatro, cinco.”');
+  const meter = levelMeter();
+  const timer = h('div', { class: 'holdbar' }, h('div', { class: 'pfill' }), h('span', {}, 'Escuchando tu voz hablada…'));
+  root.replaceChildren(h('div', { class: 'ex' }, say('Dilo en voz alta, <b>como hablas normalmente</b>, sin cantar. Puedes repetirlo.', 'atento', { compact: true }), phrase, meter.el, timer, h('div', { class: 'grow' })));
+  resetSmoother();
+  const pitches = [], levels = []; const t0 = c.currentTime; const secs = 8;
+  while (!sig.aborted && c.currentTime - t0 < secs) {
+    const p = readPitch();
+    meter.set(Math.min(1, p.rms * 7));
+    if (p.raw != null && p.raw > 36 && p.raw < 80) { pitches.push(p.raw); levels.push(p.rms); }
+    timer.firstChild.style.width = ((c.currentTime - t0) / secs) * 100 + '%';
+    await raf();
+  }
+  if (pitches.length < 25) {
+    root.replaceChildren(h('div', { class: 'ex' }, say('No alcancé a escuchar tu voz hablada. Habla un poco más fuerte o acerca el celular, y repitamos.', 'piensa', { tone: 'warn' })));
+    await sleep(1800);
+    return { score: 0, detail: 'No se escuchó la voz hablada.' };
+  }
+  pitches.sort((a, b) => a - b); levels.sort((a, b) => a - b);
+  const speak = pitches[Math.floor(pitches.length / 2)];
+  const speakRms = levels[Math.floor(levels.length / 2)];
+  setVoiceProfile({ speak, speakRms, at: Date.now() });
+  const home = homeNote();
+  const again = h('button', { class: 'btn' }, icon('speaker', 18), 'Oír mi nota de casa');
+  again.onclick = () => playNote(home, getCtx().currentTime + 0.05, 1.4, 0.3);
+  await new Promise((res) => {
+    root.replaceChildren(h('div', { class: 'ex' },
+      say(`Tu voz hablada se mueve alrededor de <b>${noteName(Math.round(speak))}</b>. Tu <b>nota de casa</b> para cantar será <b>${noteName(home)}</b>: es la que tu voz ya conoce. Escúchala.`, 'celebra', { voice: 'casa_ok' }),
+      h('div', { class: 'center' }, h('div', { class: 'home-note' }, noteName(home))),
+      h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, again, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); res(); } }, 'Continuar'))));
+    playNote(home, getCtx().currentTime + 0.3, 1.4, 0.3);
+  });
+  return { score: 1, info: !spec.scored, speak, speakRms, detail: `Voz hablada ≈ ${noteName(Math.round(speak))}; nota de casa ${noteName(home)}.` };
+}
+
+// ---------- Eco de tu propia voz ----------
+// Imitar una grabación de uno mismo es más fácil que imitar un tono ajeno, sobre todo para quien desafina
+// (Pfordresher & Mantell, 2014; Hutchins & Peretz, 2012). Grabas una nota, te escuchas y la vuelves a cantar.
+async function runSelf(spec, root, sig) {
+  if (!spec.noStart) await startButton(root, spec.text || line('ins_self'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_self'));
+  if (!(await ensureMic(root))) return { score: 0 };
+  const c = getCtx();
+  const rounds = spec.rounds || 3;
+  const hints = ['en tu nota de casa', 'un poquito más agudo que antes', 'un poquito más grave que la primera'];
+  const scores = []; let lastIssues = []; let tries = 0;
+  for (let r = 0; r < rounds && !sig.aborted; r++) {
+    // 1) grabar
+    const st = micStream();
+    let rec = null, chunks = [];
+    try { rec = new MediaRecorder(st); rec.ondataavailable = (e) => e.data.size && chunks.push(e.data); } catch (e) { rec = null; }
+    const meter = levelMeter();
+    const box = h('div');
+    root.replaceChildren(h('div', { class: 'ex' }, box, h('div', { class: 'row between' }, h('span', { class: 'pill' }, `Ronda ${r + 1} de ${rounds}`), h('span', { class: 'pill' }, '● grabando')), meter.el, h('div', { class: 'grow' })));
+    box.replaceChildren(say(`Canta un <b>"mmm"</b> o un <b>"aaa"</b> parejo, ${hints[r % hints.length]}. Sostenlo hasta que termine la barra.`, 'atento', { compact: true }));
+    if (r === 0) playNote(homeNote(), c.currentTime + 0.05, 0.9, 0.22);
+    await sleep(r === 0 ? 1100 : 300);
+    resetSmoother();
+    rec && rec.start();
+    const tRec = c.currentTime; const ps = [];
+    while (!sig.aborted && c.currentTime - tRec < 2.6) { const p = readPitch(); meter.set(Math.min(1, p.rms * 7)); if (p.raw != null && c.currentTime - tRec > 0.4) ps.push(p.raw); await raf(); }
+    if (rec) { await new Promise((res) => { rec.onstop = res; rec.stop(); }); }
+    if (ps.length < 30) { box.replaceChildren(say('No te escuché sostener la nota. Probemos de nuevo, con un poco más de voz.', 'piensa', { compact: true })); await sleep(1600); if (++tries < 4) r--; continue; }
+    ps.sort((a, b) => a - b);
+    const mine = ps[Math.floor(ps.length / 2)];
+    let buf = null;
+    try { if (rec && chunks.length) buf = await decodeFile(new Blob(chunks, { type: rec.mimeType })); } catch (e) { buf = null; }
+    // 2) escucharse y 3) volver a cantarla igual (afinador con tu propia grabación como referencia)
+    const res = await runMatch({ type: 'match', notes: [mine], tol: spec.tol || 100, hold: spec.hold || 1.2, playBuf: buf, noStart: true }, root, sig);
+    scores.push(res.score); lastIssues = res.issues || [];
+  }
+  const score = scores.reduce((a, b) => a + b, 0) / Math.max(1, scores.length);
+  return { score, issues: lastIssues, detail: `${scores.filter((x) => x === 1).length} de ${scores.length} veces volviste a cantar tu propia nota.` };
+}
+
+// ---------- ¿Qué le pasa a mi voz? Diagnóstico honesto en 4 pasos ----------
+// Separa las causas que describe la investigación: oído (percepción), llegar a la nota (mapeo oído-voz),
+// estabilidad (aire/apoyo) y volumen (timidez). Cada resultado sale de lo que el micrófono midió.
+async function runDiag(spec, root, sig) {
+  await startButton(root, line('ins_diag'), 'Empezar', 'atento', null, 'ins_diag');
+  if (!(await ensureMic(root))) return { score: 0 };
+  const step = async (n, title, fn) => {
+    await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' },
+      h('div', { class: 'diag-step' }, h('span', { class: 'pill' }, `Paso ${n} de 4`), h('h2', {}, title)),
+      say(DIAG_STEP[n], 'atento', { voice: 'diag_paso' + n }), h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); res(); } }, 'Vamos')))));
+    return fn();
+  };
+  const sp = await step(1, 'Tu voz hablada', () => runSpeak({ noStart: true }, root, sig));
+  if (sig.aborted) return { score: 0 };
+  const earR = await step(2, 'Tu oído', () => runEar({ kind: 'updown', rounds: 6, ivs: [1, 2, 3, 5], base: homeNote() + 2, noStart: true }, root, sig));
+  if (sig.aborted) return { score: 0 };
+  const hn = homeNote();
+  const m = await step(3, 'Llegar a la nota', () => runMatch({ notes: [hn, hn + 3, hn - 2], tol: 100, hold: 1, timeout: 12, noStart: true }, root, sig));
+  if (sig.aborted) return { score: 0 };
+  const su = await step(4, 'Sostener la nota', () => runSustain({ notes: [hn + 1], secs: 5, tol: 100, noStart: true }, root, sig));
+  if (sig.aborted) return { score: 0 };
+  const prof = voiceProfile() || {};
+  const singRms = [m.rmsMed, su.rmsMed].filter((x) => x != null);
+  const sing = singRms.length ? Math.max(...singRms) : null;
+  const d = {
+    at: Date.now(), ear: earR.score, reached: m.reached, n: m.n, firstAbs: m.firstAbs, octave: m.octave,
+    sd: su.sd, loudRatio: prof.speakRms && sing ? sing / prof.speakRms : null, speak: prof.speak,
+  };
+  const prev = diagnoses().slice(-1)[0];
+  addDiagnosis(d);
+  const f = diagFindings(d);
+  const cmp = prev ? diagCompare(prev, d) : null;
+  await new Promise((res) => root.replaceChildren(h('div', { class: 'ex diag-report' },
+    say('<b>Esto es lo que encontré en tu voz.</b> ' + (f.main ? f.main.lead : ''), 'piensa', { voice: f.main ? f.main.voice : null }),
+    h('div', { class: 'diag-list' }, ...f.items.map((x) => h('div', { class: 'diag-item ' + x.tone },
+      h('div', { class: 'diag-ic' }, x.tone === 'ok' ? '✓' : x.tone === 'warn' ? '!' : '•'),
+      h('div', {}, h('b', {}, x.title), h('p', { html: x.text }), x.tip ? h('p', { class: 'tip', html: x.tip }) : null)))),
+    cmp ? h('div', { class: 'card' }, h('b', {}, 'Comparado con tu diagnóstico anterior'), h('p', { class: 'small', html: cmp })) : null,
+    h('p', { class: 'small muted' }, 'Basado en Pfordresher & Brown (2007), Hutchins & Peretz (2012) y Pfordresher & Mantell (2014): la mayoría de quienes desafinan oyen bien; lo que falla es traducir lo que oyen en el movimiento de la voz, y eso se entrena.'),
+    h('div', { class: 'grow' }),
+    h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); res(); } }, 'Entendido')))));
+  const sc = (Math.min(1, d.ear / 0.8) + (d.n ? d.reached / d.n : 0) + (d.sd == null ? 0 : d.sd < 20 ? 1 : d.sd < 35 ? 0.6 : 0.3) + (d.loudRatio == null ? 0.5 : Math.min(1, d.loudRatio / 0.8))) / 4;
+  return { score: Math.max(0.7, sc), info: true, detail: 'Diagnóstico guardado en tu perfil.' };
+}
+const DIAG_STEP = {
+  1: 'Primero dime una frase, hablando normal. Así conozco la altura de tu voz hablada y tu volumen natural.',
+  2: 'Ahora tu oído: escucha dos notas y dime si la segunda sube o baja. Sin cantar.',
+  3: 'Ahora te toco tres notas y tú intentas cantarlas. Tienes tiempo: desliza la voz si lo necesitas.',
+  4: 'Por último, una nota larga. Quiero ver si se mantiene firme y con cuánta voz cantas.',
+};
+export function diagFindings(d) {
+  const items = [];
+  // 1) oído
+  if (d.ear >= 0.8) items.push({ key: 'oido_ok', tone: 'ok', title: 'Tu oído funciona bien', text: `Acertaste ${Math.round(d.ear * 6)} de 6 al decir si una nota sube o baja. <b>No eres "sordo"</b>: la sordera tonal real es rara.` });
+  else if (d.ear >= 0.6) items.push({ key: 'oido_medio', tone: 'mid', title: 'Tu oído va bien, con dudas', text: `Acertaste ${Math.round(d.ear * 6)} de 6. Las diferencias pequeñas todavía te cuestan.`, tip: 'Entrena "¿sube o baja?" y "¿iguales o distintas?" unos minutos al día.' });
+  else items.push({ key: 'oido_bajo', tone: 'warn', title: 'Te cuesta oír si sube o baja', text: `Acertaste ${Math.round(d.ear * 6)} de 6.`, tip: 'Empezamos por el oído: escucha con calma y canta despacio después. Mejora rápido con práctica diaria.' });
+  // 2) llegar a la nota (mapeo oído-voz)
+  const far = d.firstAbs != null ? Math.round(d.firstAbs) : null;
+  if (d.octave) items.push({ key: 'octava', tone: 'mid', title: 'Cantas la nota en otra octava', text: 'Varias veces cantaste la misma nota, pero una octava más grave o más aguda. Eso no está mal: es la misma nota en otra altura.', tip: 'Aquí te pedimos la altura exacta: si te piden una nota aguda para ti, escúchala y desliza la voz hacia ella.' });
+  if (d.reached >= d.n && (far == null || far < 150)) items.push({ key: 'llegas', tone: 'ok', title: 'Llegas a las notas', text: 'Lograste las tres notas.' + (far != null ? ` Tu primer intento quedó a unos ${far} cents.` : '') });
+  else if (d.reached >= 1) items.push({ key: 'mapeo_medio', tone: 'mid', title: 'Llegas a la nota buscándola', text: `Lograste ${d.reached} de ${d.n}.` + (far != null ? ` Al empezar llegas a unos ${far} cents de la nota (100 cents = medio tono).` : ''), tip: 'Antes de cantar, <b>tararea la nota por dentro</b>. Empieza suave y desliza hasta que la bolita quede al centro.' });
+  else items.push({ key: 'mapeo', tone: 'warn', title: 'Tu voz todavía no encuentra la nota', text: 'Es lo más común en quienes empiezan: el oído oye bien, pero la voz no sabe aún qué hacer para llegar ahí. Se llama mapeo oído-voz y se entrena.', tip: 'Partimos con tu nota de casa (cerca de tu voz hablada), sirenas que aterrizan y el eco de tu propia voz grabada.' });
+  // 3) estabilidad
+  if (d.sd != null) {
+    if (d.sd < 20) items.push({ key: 'firme', tone: 'ok', title: 'Tu nota larga es firme', text: `Se movió ±${Math.round(d.sd)} cents: estable.` });
+    else items.push({ key: 'tiembla', tone: d.sd < 35 ? 'mid' : 'warn', title: 'Tu nota se mueve', text: `Se movió ±${Math.round(d.sd)} cents. Eso se oye "disparejo".`, tip: 'Es el aire: inhala bajo y suelta un hilo de aire parejo. Practica "sss" y notas largas.' });
+  }
+  // 4) volumen / timidez
+  if (d.loudRatio != null) {
+    if (d.loudRatio < 0.6) items.push({ key: 'timido', tone: 'warn', title: 'Cantas más bajito que cuando hablas', text: `Al cantar usaste cerca del ${Math.round(d.loudRatio * 100)}% del volumen de tu voz hablada. Es timidez, y es muy común.`, tip: 'Con poca voz la nota tiembla y cuesta más afinar. Canta <b>al menos con la fuerza con que hablas</b>: aquí nadie te escucha.' });
+    else items.push({ key: 'volumen_ok', tone: 'ok', title: 'Cantas con voz', text: 'Usas un volumen parecido o mayor al de tu voz hablada.' });
+  }
+  const order = ['mapeo', 'timido', 'oido_bajo', 'tiembla', 'mapeo_medio', 'octava', 'oido_medio'];
+  const mainKey = order.find((k) => items.some((x) => x.key === k));
+  const LEAD = {
+    mapeo: { lead: 'Lo principal: tu oído y tu voz todavía no están conectados. No es falta de talento; se entrena.', voice: 'diag_mapeo' },
+    timido: { lead: 'Lo principal: cantas con miedo, muy bajito. Con más voz vas a afinar mejor.', voice: 'diag_timido' },
+    oido_bajo: { lead: 'Lo principal: hay que entrenar el oído primero.', voice: 'diag_oido' },
+    tiembla: { lead: 'Lo principal: tu nota se mueve. Es el aire, y tiene arreglo.', voice: 'diag_tiembla' },
+    mapeo_medio: { lead: 'Lo principal: llegas a las notas, pero buscándolas. Vamos a hacerlo más directo.', voice: 'diag_mapeo_medio' },
+    octava: { lead: 'Lo principal: cantas bien, pero en otra octava. Vamos a ajustar la altura.', voice: 'diag_octava' },
+    oido_medio: { lead: 'Vas bien: afinemos el oído un poco más.', voice: 'diag_bien' },
+  };
+  return { items, main: mainKey ? LEAD[mainKey] : { lead: '¡Vas muy bien! Sigue con el camino.', voice: 'diag_bien' } };
+}
+function diagCompare(a, b) {
+  const out = [];
+  if (a.ear != null && b.ear != null && Math.abs(b.ear - a.ear) > 0.1) out.push(`oído ${b.ear > a.ear ? 'mejor' : 'peor'} (${Math.round(a.ear * 6)}→${Math.round(b.ear * 6)} de 6)`);
+  if (a.reached != null && b.reached != null && a.reached !== b.reached) out.push(`notas logradas ${a.reached}→${b.reached} de 3`);
+  if (a.sd != null && b.sd != null && Math.abs(b.sd - a.sd) > 4) out.push(`nota larga ${b.sd < a.sd ? 'más firme' : 'menos firme'} (±${Math.round(a.sd)}→±${Math.round(b.sd)} cents)`);
+  if (a.loudRatio != null && b.loudRatio != null && Math.abs(b.loudRatio - a.loudRatio) > 0.1) out.push(`volumen al cantar ${Math.round(a.loudRatio * 100)}%→${Math.round(b.loudRatio * 100)}% de tu voz hablada`);
+  return out.length ? out.join('; ') + '.' : 'Resultados parecidos a la vez anterior.';
+}
+
+
+// ---------- Tu identidad vocal: zona cómoda (tesitura) y timbre, medidos ----------
+// Barrido de notas largas por tu rango. En cada nota se mide: afinación, estabilidad (cents), periodicidad
+// (→ HNR aproximado: menos ruido = voz más limpia), H1−H2 (más alto = voz más aireada; Hillenbrand y otros),
+// y el reparto de energía (graves vs 2–4 kHz, la zona del "formante del cantante" que da brillo: Sundberg).
+// Todo es aproximado: el micrófono del celular y la pieza cambian el timbre medido.
+async function runIdentity(spec, root, sig) {
+  await startButton(root, line('ins_ident'), 'Empezar', 'atento', null, 'ins_ident');
+  if (!(await ensureMic(root))) return { score: 0 };
+  let r = getRange();
+  if (r.guessed) { await runRange({}, root, sig); r = getRange(); }
+  if (sig.aborted) return { score: 0 };
+  const span = r.high - r.low;
+  const stepS = span > 16 ? 3 : 2;
+  const notes = []; for (let m = r.low + 1; m <= r.high - 1; m += stepS) notes.push(m);
+  if (notes.length < 3) for (let m = r.low; m <= r.high; m += 2) if (!notes.includes(m)) notes.push(m);
+  notes.sort((a, b) => a - b);
+  const c = getCtx(); const per = [];
+  for (let i = 0; i < notes.length && !sig.aborted; i++) {
+    const target = notes[i];
+    const coachBox = h('div');
+    const canvas = h('canvas', { class: 'roll small' });
+    const timer = h('div', { class: 'holdbar' }, h('div', { class: 'pfill ok' }), h('span', {}, 'Sostén "aaa" 3 segundos'));
+    root.replaceChildren(h('div', { class: 'ex' }, coachBox, h('div', { class: 'row between' }, h('span', { class: 'pill' }, `Nota ${i + 1} de ${notes.length}`), h('span', { class: 'pill' }, noteName(target))), canvas, timer, h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn ghost', onclick: () => (skipNote = true) }, 'No llego a esta nota'))));
+    let skipNote = false;
+    const roll = new Roll(canvas, { span: 5, nowFrac: 0.9 });
+    roll.setRange(target - 5, target + 5); roll.targets = [{ t0: -100, t1: 1e9, m0: target, m1: target }];
+    coachBox.replaceChildren(say('Escucha la nota…', 'canta', { compact: true }));
+    playNote(target, c.currentTime + 0.05, 1.1, 0.28);
+    await sleep(1350);
+    coachBox.replaceChildren(say('Canta <b>"aaa"</b> cómodo, con tu voz natural. No es examen: quiero oír cómo suena tu voz aquí.', 'atento', { compact: true }));
+    resetSmoother();
+    const fr = []; let started = null; const t0 = c.currentTime; let k = 0;
+    const acc = { n: 0, h12: [], low: 0, sf: 0, mid: 0, cen: 0, cenW: 0 };
+    while (!sig.aborted && !skipNote) {
+      const now = c.currentTime; const p = readPitch();
+      const cents = p.raw != null ? (p.raw - target) * 100 : null;
+      if (started == null && cents != null && Math.abs(cents) < 200) started = now;
+      if (started != null) {
+        const el = now - started;
+        if (el > 0.4 && cents != null && Math.abs(cents) < 200) {
+          fr.push({ cents, rms: p.rms, clar: p.clarity });
+          if (++k % 3 === 0) { // timbre desde el espectro
+            const sp = readSpectrum(); const f0 = 440 * 2 ** ((p.raw - 69) / 12);
+            if (sp) {
+              const pk = (f) => { let b = -200; const i0 = Math.floor((f * 0.95) / sp.binHz), i1 = Math.ceil((f * 1.05) / sp.binHz); for (let j = i0; j <= i1; j++) b = Math.max(b, sp.db[j]); return b; };
+              if (f0 >= 150) acc.h12.push(pk(f0) - pk(2 * f0));
+              let low = 0, mid = 0, sf = 0, cn = 0, cw = 0;
+              for (let j = 1; j < sp.db.length; j++) {
+                const f = j * sp.binHz; if (f > 5000) break; if (f < 70) continue;
+                const pw = 10 ** (sp.db[j] / 10);
+                if (f < 1000) low += pw; else if (f < 2000) mid += pw; else if (f >= 2000 && f < 4000) sf += pw;
+                cn += f * pw; cw += pw;
+              }
+              if (cw > 0) { acc.low += low; acc.mid += mid; acc.sf += sf; acc.cen += cn; acc.cenW += cw; acc.n++; }
+            }
+          }
+        }
+        timer.firstChild.style.width = Math.min(100, (el / 3.4) * 100) + '%';
+        if (el >= 3.4) break;
+      }
+      if (started == null && now - t0 > 8) break;
+      roll.addUser(now, p.midi, cents == null ? null : Math.abs(cents) <= 50); roll.draw(now);
+      await raf();
+    }
+    roll.destroy();
+    if (fr.length < 25) { per.push({ m: target, ok: false }); continue; }
+    const mean = fr.reduce((a, f) => a + f.cents, 0) / fr.length;
+    const sd = Math.sqrt(fr.reduce((a, f) => a + (f.cents - mean) ** 2, 0) / fr.length);
+    const inT = fr.filter((f) => Math.abs(f.cents) <= 50).length / fr.length;
+    const clar = fr.reduce((a, f) => a + f.clar, 0) / fr.length;
+    const rms = fr.reduce((a, f) => a + f.rms, 0) / fr.length;
+    const cv = Math.sqrt(fr.reduce((a, f) => a + (f.rms - rms) ** 2, 0) / fr.length) / (rms || 1);
+    const hnr = 10 * Math.log10(Math.min(0.999, clar) / (1 - Math.min(0.999, clar)));
+    const med = (a) => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : null; };
+    per.push({ m: target, ok: true, inT, sd, hnr, cv, rms, h12: med(acc.h12),
+      bright: acc.n && acc.low ? 10 * Math.log10((acc.sf + 1e-12) / acc.low) : null, cen: acc.cenW ? acc.cen / acc.cenW : null });
+    sfx('tap');
+    await sleep(300);
+  }
+  if (sig.aborted) return { score: 0 };
+  const id = identityFrom(per, r);
+  setIdentity(id);
+  // práctico: desde ahora los ejercicios se centran en tu zona dulce
+  if (id.sweetLo != null) { setRange({ ...r, comfort: Math.round((id.sweetLo + id.sweetHi) / 2), guessed: false }); id.applied = true; }
+  await new Promise((res) => root.replaceChildren(identityView(id, () => { stopSpeaking(); res(); })));
+  return { score: 1, info: true, detail: 'Identidad vocal guardada en tu perfil.' };
+}
+export function identityFrom(per, r) {
+  const ok = per.filter((p) => p.ok);
+  // comodidad por nota: afinación + estabilidad + voz limpia + volumen parejo
+  ok.forEach((p) => { p.comfort = 0.35 * Math.min(1, p.inT / 0.8) + 0.3 * Math.max(0, Math.min(1, 1 - (p.sd - 8) / 30)) + 0.2 * Math.max(0, Math.min(1, (p.hnr - 8) / 12)) + 0.15 * Math.max(0, Math.min(1, 1 - (p.cv - 0.12) / 0.4)); });
+  // zona dulce: la ventana de ~5 semitonos con mejor comodidad media
+  let best = null;
+  for (const a of ok) {
+    const win = ok.filter((p) => p.m >= a.m && p.m <= a.m + 5);
+    if (win.length < 2 && ok.length > 2) continue;
+    const sc = win.reduce((s, p) => s + p.comfort, 0) / win.length;
+    if (!best || sc > best.sc) best = { sc, lo: win[0].m, hi: win[win.length - 1].m };
+  }
+  const prof = voiceProfile() || {};
+  const avg = (k) => { const v = ok.map((p) => p[k]).filter((x) => x != null && isFinite(x)); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const center = (r.low + r.high) / 2;
+  // voz hablada < ~160 Hz suele ser una voz grave (típica de hombres); en la zona ambigua decide el rango
+  const graveTipica = prof.speak != null && (prof.speak < 51 || prof.speak > 55) ? prof.speak < 51 : center < 60;
+  const type = graveTipica ? (center < 53.5 ? 'bajo' : center < 57.5 ? 'barítono' : 'tenor') : (center < 67 ? 'contralto' : center < 70.5 ? 'mezzosoprano' : 'soprano');
+  // cambio de registro: mayor caída de comodidad entre notas vecinas en la mitad alta
+  let brk = null;
+  for (let i = 1; i < ok.length; i++) { const drop = ok[i - 1].comfort - ok[i].comfort; if (ok[i].m > center - 2 && drop > 0.2 && (!brk || drop > brk.drop)) brk = { m: ok[i].m, drop }; }
+  const hnr = avg('hnr'), h12 = avg('h12'), bright = avg('bright');
+  const texture = hnr == null ? null : hnr >= 17 ? 'limpia' : (h12 != null && h12 > 8) ? 'aireada' : hnr >= 12 ? 'con textura suave' : (h12 != null && h12 < 2) ? 'rasposa' : 'aireada o rasposa';
+  const color = bright == null ? null : bright > -18 ? 'brillante' : bright < -28 ? 'oscura y cálida' : 'equilibrada';
+  return { at: Date.now(), low: r.low, high: r.high, speak: prof.speak ?? null, sweetLo: best ? best.lo : null, sweetHi: best ? best.hi : null,
+    type, brk: brk ? brk.m : null, hnr, h12, bright, texture, color, per: per.map((p) => (p.ok ? { m: p.m, comfort: p.comfort, inT: p.inT, sd: p.sd, hnr: p.hnr } : { m: p.m, comfort: 0, missed: true })), missed: per.filter((p) => !p.ok).map((p) => p.m) };
+}
+export function identityView(id, onDone) {
+  const nn = (m) => (m == null ? '—' : noteName(m));
+  const TYPE_TXT = { bajo: 'Bajo: la voz más grave, profunda y resonante.', barítono: 'Barítono: la voz masculina más común, de color lleno y versátil.', tenor: 'Tenor: voz masculina aguda, clara y brillante.', contralto: 'Contralto: la voz femenina más grave, profunda y cálida.', mezzosoprano: 'Mezzosoprano: voz femenina media, cálida y rica.', soprano: 'Soprano: voz femenina aguda, clara y brillante.' };
+  const TEX_TXT = { limpia: 'Tu sonido es limpio: poco ruido de aire.', aireada: 'Tu sonido tiene aire (soplado). Es un color válido en pop suave; para más proyección, cierra un poco más la voz con el "ataque limpio".', 'con textura suave': 'Tu voz tiene algo de aire o textura: le da un color cálido.', rasposa: 'Tu voz tiene aspereza (rasposa). Si no es tu estilo buscado o si duele, no la fuerces; si persiste ronca sin cantar, consúltalo con un fonoaudiólogo.', 'aireada o rasposa': 'Tu sonido tiene bastante ruido (aire o aspereza). Puede ser timidez (poca voz) o el micrófono: repite el análisis con más voz.' };
+  const COL_TXT = { brillante: 'Tienes mucha energía alrededor de 3 kHz: tu voz "corta" y se proyecta.', 'oscura y cálida': 'La energía se concentra en los graves: tu voz suena redonda y cálida.', equilibrada: 'Tu energía está repartida entre graves y agudos.' };
+  const bars = h('div', { class: 'tess' }, ...id.per.map((p) => h('div', { class: 'tess-col' + (id.sweetLo != null && p.m >= id.sweetLo && p.m <= id.sweetHi ? ' sweet' : '') },
+    h('div', { class: 'tess-bar' + (p.missed ? ' miss' : ''), style: `height:${p.missed ? 4 : Math.round(12 + p.comfort * 88)}%` }), h('small', {}, nn(p.m)))));
+  return h('div', { class: 'ex identity' },
+    say(`<b>Tu identidad vocal.</b> Tu voz se parece a la de un <b>${id.type}</b>, y donde mejor suenas es entre <b>${nn(id.sweetLo)}</b> y <b>${nn(id.sweetHi)}</b>.`, 'celebra', { voice: 'ident_ok' }),
+    h('div', { class: 'card' }, h('h3', {}, 'Dónde cantas mejor'), bars,
+      h('p', { class: 'small' }, `Barra más alta = nota más cómoda (afinada, estable, limpia y pareja). Tu zona dulce: ${nn(id.sweetLo)}–${nn(id.sweetHi)}. Rango cómodo medido: ${nn(id.low)}–${nn(id.high)}.` + (id.speak != null ? ` Voz hablada ≈ ${nn(Math.round(id.speak))}.` : '') + (id.brk ? ` Tu voz cambia de comodidad cerca de ${nn(id.brk)}: probablemente ahí está tu cambio de registro.` : '') + (id.missed.length ? ` No llegaste a: ${id.missed.map(nn).join(', ')}.` : ''))),
+    id.applied ? h('div', { class: 'card ok-card' }, h('b', {}, 'Ya lo apliqué: '), `desde ahora tus ejercicios y canciones de práctica se centran en tu zona dulce (${nn(id.sweetLo)}–${nn(id.sweetHi)}).`) : null,
+    h('div', { class: 'card' }, h('h3', {}, 'Tipo de voz probable: ' + id.type), h('p', { class: 'small' }, TYPE_TXT[id.type] + ' Se estima por tu rango, tu zona cómoda y tu voz hablada. Con entrenamiento el rango crece; un profe lo confirma escuchándote.')),
+    h('div', { class: 'card' }, h('h3', {}, 'Tu timbre'),
+      id.color ? h('p', {}, h('b', {}, 'Color: ' + id.color + '. '), COL_TXT[id.color], h('small', { class: 'muted' }, ` (energía 2–4 kHz vs graves: ${Math.round(id.bright)} dB)`)) : null,
+      id.texture ? h('p', {}, h('b', {}, 'Textura: ' + id.texture + '. '), TEX_TXT[id.texture], h('small', { class: 'muted' }, ` (armonía/ruido ≈ ${Math.round(id.hnr)} dB` + (id.h12 != null ? `, H1−H2 ≈ ${Math.round(id.h12)} dB` : '') + ')')) : null,
+      h('p', { class: 'small muted' }, 'Medidas aproximadas: el micrófono del celular y la pieza cambian el timbre. Repite el análisis en el mismo lugar para comparar.')),
+    h('div', { class: 'card' }, h('h3', {}, 'Para tus canciones'),
+      h('p', { class: 'small' }, `Elige tonos donde la mayor parte de la melodía caiga entre ${nn(id.sweetLo)} y ${nn(id.sweetHi)}, y las notas más altas no pasen de ${nn(id.high)}. En Suno puedes describir la voz como: "${id.type}, voz ${id.color || 'natural'}${id.texture === 'limpia' ? ', clara' : id.texture === 'aireada' ? ', suave y aireada' : id.texture === 'rasposa' ? ', rasposa' : ''}".`)),
+    h('div', { class: 'grow' }),
+    onDone ? h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: onDone }, 'Entendido')) : null);
 }
 
 // ---------- Dinámica: crescendo, decrescendo y messa di voce ----------
@@ -870,4 +1219,4 @@ async function runDynamics(spec, root, sig) {
   return { score, issues, detail: details.map((d, k) => `Nota ${k + 1}: ${d}.`).join(' ') };
 }
 
-const RUNNERS = { info: runInfo, breath: runBreath, range: runRange, match: runMatch, seq: runSeq, ear: runEar, rhythm: runRhythm, sustain: runSustain, dynamics: runDynamics };
+const RUNNERS = { info: runInfo, breath: runBreath, range: runRange, match: runMatch, seq: runSeq, ear: runEar, rhythm: runRhythm, sustain: runSustain, dynamics: runDynamics, speak: runSpeak, self: runSelf, diag: runDiag, identity: runIdentity };

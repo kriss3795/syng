@@ -350,3 +350,28 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .lvl-dots i { width: 8px; height: 8px; border-radius: 50%; background: var(--track); border: 1.5px solid var(--line); }
 .lvl-dots i.on { background: var(--primary); border-color: var(--primary-d); }
 .lvl-dots i.crown.on { background: #FFC93C; border-color: #D99E0A; }
+
+/* Encontrar tu voz: diagnóstico, nota de casa, identidad */
+.speak-card { margin: 18px 0; padding: 18px; border-radius: var(--r-md); background: var(--primary-l); border: 2px solid #B7E6E4; font-family: var(--display); font-size: 22px; line-height: 1.35; text-align: center; color: var(--primary-d); }
+.home-note { display: inline-block; margin: 18px auto; padding: 14px 28px; border-radius: 22px; background: var(--primary); color: #fff; font-family: var(--display); font-weight: 700; font-size: 44px; box-shadow: 0 6px 0 var(--primary-d); }
+.diag-step { text-align: center; margin: 10px 0 4px; }
+.diag-step h2 { font-size: 26px; }
+.diag-list { display: grid; gap: 10px; margin: 12px 0; }
+.diag-item { display: grid; grid-template-columns: 34px 1fr; gap: 10px; padding: 12px; border-radius: var(--r-md); border: 2px solid var(--line); background: var(--card); }
+.diag-item p { margin: 4px 0 0; font-size: 14.5px; }
+.diag-item .tip { color: var(--muted); }
+.diag-ic { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; font-weight: 900; color: #fff; background: var(--blue); }
+.diag-item.ok { border-color: #BFEBD3; } .diag-item.ok .diag-ic { background: var(--ok); }
+.diag-item.warn { border-color: #FFDDB0; } .diag-item.warn .diag-ic { background: var(--warn); }
+.diag-list.compact .diag-item { padding: 8px 10px; }
+.airtrack { position: relative; }
+.airmark { position: absolute; top: -4px; bottom: -4px; width: 3px; border-radius: 2px; background: var(--ink); opacity: .7; }
+.airfill.low { background: var(--warn) !important; }
+.tess { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding: 8px 4px 0; }
+.tess-col { flex: 1; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; align-items: center; gap: 4px; }
+.tess-bar { width: 100%; max-width: 34px; border-radius: 8px 8px 4px 4px; background: var(--track); }
+.tess-col.sweet .tess-bar { background: var(--primary); }
+.tess-col small { font-size: 11px; color: var(--muted); font-weight: 700; }
+.identity .card h3 { margin-top: 0; }
+.tess-bar.miss { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, transparent 3px, transparent 6px); }
+.ok-card { border-color: #BFEBD3; background: var(--ok-l); }
