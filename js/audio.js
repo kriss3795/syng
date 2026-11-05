@@ -220,3 +220,10 @@ export function readSpectrum() {
   mic.analyser.getFloatFrequencyData(specBuf);
   return { db: specBuf, binHz: getCtx().sampleRate / mic.analyser.fftSize };
 }
+
+// Copia del último trozo de audio del micrófono (≈85 ms) para análisis finos (ataque, cepstro)
+export function readRaw() {
+  if (!mic) return null;
+  mic.analyser.getFloatTimeDomainData(mic.raw);
+  return { x: Float32Array.from(mic.raw), sr: getCtx().sampleRate };
+}

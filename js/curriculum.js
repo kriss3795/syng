@@ -122,9 +122,9 @@ export const UNITS = [
       { type: 'match', home: [0], tol: 140, hold: 1, text: 'Di <b>"hola"</b> como hablando, y alarga la "a": <b>"holaaa"</b>, en tu nota de casa. Esa nota sostenida ya es cantar.' },
       { type: 'match', home: [0, 2, -1], tol: 120, hold: 1 },
     ] },
-    { id: 'encid', title: 'Tu identidad vocal', once: true, build: () => [
-      tec('tec_identidad', 'Tu identidad vocal'),
-      { type: 'identity' },
+    { id: 'encid', title: 'El mapa de tu voz', once: true, build: () => [
+      tec('tec_mapa', 'El mapa de tu voz'),
+      { type: 'voicemap' },
     ] },
     { id: 'enc3', title: 'Voz con cuerpo', build: () => [
       tec('tec_timidez', 'Sin miedo'),
@@ -318,6 +318,33 @@ export const UNITS = [
       rhythm([1, 0.5, 0.5, -1, 1], { bpm: 88, reps: 2, ttol: 100 }),
       rhythm([1.5, 0.5, 0.5, 1, 0.5], { bpm: 84, reps: 2, ttol: 100 }),
       seq(P([[0, .5], [0, .5], [2, 1], [4, 1.5], [2, .5], [0, 2]]), { mode: 'echo', bpm: 88, tol: 90, ttol: 130, labels: 'ta' }),
+    ] },
+  ] },
+  { id: 'ene', title: 'Cantar con ganas', desc: 'Energía, proyección y presencia: cantar como cantante, no apagado ni con miedo', color: 'orange', lessons: [
+    { id: 'ene1', title: 'Voz de llamar', build: () => [
+      tec('tec_energia', 'Cantar con ganas'),
+      { type: 'energy', home: [0], syl: '¡hey!', goal: 1.0, secs: 3, cue: 'Llama a alguien en la nota: <b>"¡heeey!"</b>, como en la calle. Esa es tu voz con energía.' },
+      { type: 'energy', home: [0, 2], syl: 'ma', goal: 1.1, secs: 3 },
+    ] },
+    { id: 'ene2', title: 'Twang: brillo sin gritar', build: () => [
+      tec('tec_twang', 'El twang'),
+      { type: 'energy', home: [0, 2, 4], syl: 'nyeh', goal: 1.1, secs: 3, cue: '<b>"Nyeh"</b> con sonrisa, como un niño molestando: brillo y proyección sin apretar.' },
+      seq(SCALE5, { mode: 'echo', atHome: true, bpm: 84, tol: 90, labels: 'nyeh', energy: true, text: 'Escala con <b>"nyeh"</b>, con ese mismo brillo de principio a fin.' }),
+    ] },
+    { id: 'ene3', title: 'Frase con intención', build: () => [
+      tec('tec_intencion', 'Cantarle a alguien'),
+      { type: 'energy', home: [0, 4], syl: 'ya', goal: 1.2, secs: 3 },
+      seq(ODA.slice(0, 8), { mode: 'echo', bpm: 92, tol: 80, ttol: 200, labels: 'la', energy: true, text: 'La <b>Oda a la alegría</b>, cantada como si la presentaras en un escenario: con ganas hasta la última nota.' }),
+    ] },
+    { id: 'ene4', title: 'Como en el escenario', build: () => [
+      tec('tec_escenario', 'Presencia'),
+      { type: 'energy', home: [0, 3, 5], syl: 'oh', goal: 1.3, secs: 4 },
+      seq(MARTINILLO, { mode: 'along', bpm: 96, tol: 80, ttol: 200, labels: 'la', reps: [0, 0], energy: true, text: '<b>Martinillo</b> con toda la energía, sin bajar al final de las frases.' }),
+    ] },
+    { id: 'enex', title: 'Prueba: con ganas', check: true, build: () => [
+      checkInfo(),
+      { type: 'energy', home: [0, 4], goal: 1.2, secs: 4, syl: 'a' },
+      seq(ODA, { mode: 'echo', bpm: 96, tol: 70, ttol: 180, labels: 'la', energy: true }),
     ] },
   ] },
   { id: 'voc', title: 'Vocales y dicción', desc: 'Vocales puras, consonantes ágiles, legato y cantar con letra', color: 'pink', lessons: [
@@ -575,7 +602,7 @@ export const UNITS = [
 export const STAGES = [
   { n: 1, title: 'Fundamentos', sub: 'Tu cuerpo, tu voz y tu oído', color: 'teal', units: ['enc', 'u1', 'oid'], voice: 'st_1',
     why: 'Primero el instrumento y la confianza: postura, respiración y conectar el oído con la voz. Seth Riggs parte "construyendo confianza", y la investigación muestra que lo que más cuesta al empezar es igualar la nota (Pfordresher y Brown, 2007).' },
-  { n: 2, title: 'Emisión', sub: 'Cómo nace el sonido, y tus primeras melodías', color: 'blue', units: ['u2', 'u3', 'voc'], voice: 'st_2',
+  { n: 2, title: 'Emisión', sub: 'Cómo nace el sonido, cantar con ganas y tus primeras melodías', color: 'blue', units: ['u2', 'u3', 'ene', 'voc'], voice: 'st_2',
     why: 'Después, cómo nace el sonido: el ataque limpio y el manejo del aire son los dos primeros capítulos de "The Structure of Singing" de Richard Miller; luego la resonancia y las vocales. Y desde ya cantas melodías simples, para no esperar a cantar.' },
   { n: 3, title: 'Lenguaje musical', sub: 'Ritmo, escalas, intervalos, semitonos y lectura', color: 'violet', units: ['u4', 'u5', 'u6', 'men', 'lec'], voice: 'st_3',
     why: 'Con la voz encaminada, la música en el orden del método de Vaccai (1832), que todavía se usa en conservatorios: escala y terceras, cuartas y quintas, sextas, octavas, semitonos y síncopa. Después la afinación fina y leer cantando.' },

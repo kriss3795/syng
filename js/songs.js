@@ -4,7 +4,7 @@ import { getCtx, startMic, readPitch, resetSmoother, latency, decodeFile, micStr
 import { noteName } from './pitch.js';
 import { analyzeSong, parseLyrics, autoAlign, wordTimes } from './analysis.js';
 import { leakCheck } from './exercises.js';
-import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record, load, save } from './store.js';
+import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record, load, save, voiceProfile } from './store.js';
 import { say, chincol, diagnoseSeq, verdict, line } from './coach.js';
 import { speak, stopSpeaking, sfx, confetti } from './voice.js';
 import { songReport, songObs } from './songcoach.js';
@@ -295,7 +295,7 @@ export function reportView(rep, prev, { id, nav, lines, setLoop, compare, avgC }
       delta != null ? h('p', { class: 'small' }, `${delta >= 0 ? '📈' : '📉'} La vez anterior: ${pct(prev.score)} → ahora ${pct(rep.score)}.` + (improved.length ? ` Mejoraste la${improved.length > 1 ? 's' : ''} frase${improved.length > 1 ? 's' : ''} ${improved.map((l) => l.i + 1).join(', ')}.` : '')) : null,
       say(top ? `<b>Lo principal en esta canción:</b> ${top.title.toLowerCase()}. ${top.tip}` : rep.score >= 0.7 ? '¡Muy bien cantada! Prueba sin voz guía o con más exigencia.' : 'Revisemos frase por frase.', top ? 'piensa' : v.mood, { compact: true, voice: v.voice })),
     rep.global.length ? h('div', { class: 'k-card' }, h('h3', {}, 'Cómo cantas esta canción'),
-      h('div', { class: 'diag-list' }, ...rep.global.map((g) => h('div', { class: 'diag-item ' + (g.tone || 'warn') }, h('div', { class: 'diag-ic' }, tones[g.tone || 'warn']), h('div', {}, h('b', {}, g.title), h('p', {}, g.evidence), h('p', { class: 'tip' }, '👉 ' + g.tip)))))) : null,
+      h('div', { class: 'diag-list' }, ...rep.global.map((g) => h('div', { class: 'diag-item ' + (g.tone || 'warn') }, h('div', { class: 'diag-ic' }, tones[g.tone || 'warn']), h('div', {}, h('b', {}, g.title), h('p', {}, g.evidence), h('p', { class: 'tip' }, '👉 ' + g.tip), g.lesson ? h('button', { class: 'btn small', onclick: () => nav('#leccion-' + g.lesson) }, 'Practicar ahora') : null))))) : null,
     rep.plan.length ? h('div', { class: 'k-card' }, h('h3', {}, 'Tu plan de práctica'),
       h('p', { class: 'small' }, 'Estas frases son las que más te van a mejorar la canción. Corrige cada una (ejercicio con tu misma frase) y después vuelve a cantar la canción completa para comparar.'),
       ...rep.plan.map((l, k) => h('button', { class: 'btn line', onclick: () => nav(`#frase-${id}-${l.i}${l.probs[0] ? '-' + l.probs[0].key : ''}`) }, h('span', { class: 'pill' }, String(k + 1)), h('span', {}, lines[l.i].text, h('small', { class: 'muted', html: l.probs[0] ? ' · ' + l.probs[0].text.replace(/<[^>]+>/g, '') : '' }))))) : null,
@@ -358,7 +358,7 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
   let rec = null, recChunks = [], recStartPos = 0, lastTake = null;
   const state = { shift: 0 };
   // el profe graba cada toma (solo en tu celular) para poder comparar frase por frase: original vs tú
-  let auto = null, autoTake = null; const allF = [];
+  let auto = null, autoTake = null; const allF = []; let eS = 0, lowT = 0, lastNudge = 0;
 
   const startPlay = async (pos) => {
     stopSpeaking();
@@ -492,6 +492,13 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
         const p = readPitch();
         const { ok, shown } = evalFrame(targets, ut, p, Number(tolSel.value), st, state);
         allF.push({ t: ut, m: shown });
+        // el profe en vivo: si cantas apagado varios segundos, te lo dice
+        if (p.midi != null && targets.some((x) => ut >= x.t0 && ut <= x.t1)) {
+          eS = eS * 0.95 + p.rms * 0.05;
+          const ref = (voiceProfile() || {}).speakRms;
+          if (ref && eS < ref * 0.6) lowT += 1 / 60; else lowT = 0;
+          if (lowT > 3 && performance.now() - lastNudge > 12000) { lastNudge = performance.now(); lowT = 0; coachBox.replaceChildren(say('📣 <b>¡Con más ganas!</b> Estás cantando más bajito que cuando hablas. Cántala para alguien.', 'atento', { compact: true })); }
+        }
         roll.addUser(ut, shown, ok);
         for (const x of targets) if (!x.result && x.frames.length && ut > x.t1 + 0.05) { x.result = scoreNote(x) ? 'hit' : 'miss'; }
         const dn = targets.filter((x) => x.result);

@@ -1,6 +1,10 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
 import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf } from './curriculum.js';
-import { run, diagFindings, identityView } from './exercises.js';
+import { run, diagFindings, identityView, registerRunner } from './exercises.js';
+import { runVoiceMap, voiceMapView } from './voicemap.js';
+registerRunner('voicemap', runVoiceMap);
+import { runEnergy } from './energy.js';
+registerRunner('energy', runEnergy);
 import { phraseExercises } from './songcoach.js';
 import { gameMenu, playGame } from './game.js';
 import { analyze, adaptExercises, warmExtras, remedialFor, liveAdjust, newFindings, obsCount } from './adapt.js';
@@ -31,7 +35,7 @@ function renderHeader() {
     h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)));
 }
 
-const FOCUS = /^(juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -63,6 +67,8 @@ async function route() {
     }
     if (hsh === 'juego') return gameMenu(view, nav);
     if (hsh.startsWith('juego-')) return playGame(view, nav, hsh.slice(6), sig);
+    if (hsh === 'mapa') return session({ title: 'El mapa de tu voz', color: 'teal', exercises: [{ type: 'voicemap' }], id: 'mapa' });
+    if (hsh === 'mapa-ver') { const m = (load().voiceMaps || []).slice(-1)[0]; const pv = (load().voiceMaps || []).slice(-2, -1)[0]; return m ? view.replaceChildren(h('div', { class: 'page' }, voiceMapView(m, pv, () => nav('#perfil')))) : nav('#mapa'); }
     if (hsh === 'identidad') return session({ title: 'Tu identidad vocal', color: 'teal', exercises: [{ type: 'identity' }], id: 'identidad' });
     if (hsh === 'diagnostico') return session({ title: 'Diagnóstico de tu voz', color: 'teal', exercises: [{ type: 'diag' }], id: 'diagnostico' });
     if (hsh === 'repaso') return session({ title: 'Repaso', color: 'teal', exercises: reviewExercises(), id: 'repaso' });
@@ -536,6 +542,16 @@ function profeView() {
     h('p', { class: 'small muted' }, 'Cada nota que cantas se guarda solo en tu celular. Los patrones se recalculan en cada sesión: si corriges un vicio, el ajuste se retira solo.'),
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver'))));
 }
+function mapCard() {
+  const ms = load().voiceMaps || []; const m = ms[ms.length - 1];
+  const go = h('button', { class: 'btn primary', onclick: () => nav('#mapa') }, icon('mic', 18), m ? 'Hacer el mapa otra vez' : 'Hacer el mapa de mi voz');
+  if (!m) return h('div', { class: 'card ok-card' }, h('h3', {}, 'El mapa de tu voz'), h('p', { class: 'small' }, 'Conoce tu voz en todo sentido: cómo hablas, dónde cantas mejor, tu color y textura, tu pasaje, tu volumen, tu aire, cómo empiezas el sonido y cómo afinas. Unos 8 minutos.'), go);
+  const id = m.id;
+  return h('div', { class: 'card ok-card' }, h('h3', {}, 'El mapa de tu voz'),
+    h('p', { class: 'small' }, [id && id.type, id && id.color && 'color ' + id.color, id && id.texture, m.siren && m.siren.passage != null && 'pasaje ' + noteName(m.siren.passage), m.air && 'aire ' + m.air.mpt + ' s', m.onset && 'ataque ' + m.onset.kind].filter(Boolean).join(' · ')),
+    h('p', { class: 'small muted' }, new Date(m.at).toLocaleDateString('es-CL') + (ms.length > 1 ? ` · ${ms.length} mapas guardados` : '')),
+    h('div', { class: 'row' }, h('button', { class: 'btn', onclick: () => nav('#mapa-ver') }, 'Ver mi mapa'), go));
+}
 function identityCard() {
   const id = identities().slice(-1)[0];
   const btn = h('button', { class: 'btn', onclick: () => nav('#identidad') }, icon('wave', 18), id ? 'Repetir análisis de mi voz' : 'Descubrir mi identidad vocal');
@@ -592,6 +608,7 @@ function profileView() {
       h('p', {}, r.guessed ? 'Rango sin medir todavía.' : `Rango cómodo: ${noteName(r.low)} a ${noteName(r.high)} (${r.high - r.low} semitonos). Zona central: ${noteName(r.comfort)}.`),
       voiceProfile()?.speak ? h('p', {}, `Voz hablada ≈ ${noteName(Math.round(voiceProfile().speak))} · tu nota de casa: ${noteName(homeNote())}.`) : null,
       h('button', { class: 'btn', onclick: () => nav('#profe') }, icon('ear', 18), 'Lo que he aprendido de ti'),
+      mapCard(),
       diagCard(),
       identityCard(),
       h('h3', {}, 'Tu afinación en el tiempo'), chart),

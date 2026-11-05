@@ -8,9 +8,9 @@ import { observe } from './adapt.js';
 import { stopSpeaking, sfx } from './voice.js';
 import { getRange, setRange, homeNote, voiceProfile, setVoiceProfile, addDiagnosis, diagnoses, setIdentity } from './store.js';
 
-const raf = () => new Promise((r) => requestAnimationFrame(r));
+export const raf = () => new Promise((r) => requestAnimationFrame(r));
 
-async function ensureMic(root) {
+export async function ensureMic(root) {
   try { await startMic(); return true; }
   catch (e) {
     root.replaceChildren(h('div', { class: 'ex' },
@@ -19,13 +19,14 @@ async function ensureMic(root) {
   }
 }
 
-function startButton(root, text, label = 'Empezar', mood = 'atento', extra = null, voice = null) {
+export function startButton(root, text, label = 'Empezar', mood = 'atento', extra = null, voice = null) {
   return new Promise((res) => {
     const b = h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); getCtx(); res(); } }, label);
     root.replaceChildren(h('div', { class: 'ex' }, say(text, mood, { voice }), extra, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, b)));
   });
 }
 
+export function registerRunner(type, fn) { RUNNERS[type] = fn; }
 export async function run(spec, root, sig) {
   if (spec.home) { const hn = homeNote(); spec = { ...spec, notes: spec.home.map((o) => hn + o) }; } // en tu "nota de casa"
   if (spec.atHome) spec = { ...spec, base: homeNote() };
@@ -200,7 +201,7 @@ async function requireHeadphones(root, sig, midi, drone) {
 const JUST = { 3: 16, 4: -14, 8: 14, 9: -16 };
 
 // ---------- Igualar nota (con afinador fino) ----------
-async function runMatch(spec, root, sig) {
+export async function runMatch(spec, root, sig) {
   const tol = spec.tol ?? 50;
   const hold = spec.hold ?? 1;
   if (!spec.noStart) await startButton(root, spec.text || line('ins_match') + ` <small>(Zona verde: ±${tol / 2} cents durante ${hold} s.)</small>`, 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_match'));
@@ -456,7 +457,7 @@ async function runSeq(spec, root, sig) {
   const lat = latency();
   const scored = targets.filter((x) => !x.demo);
   const all = []; // todos los cuadros: {t, m (suavizado), raw}
-  const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null;
+  const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null; let eSm = 0, lowE = 0;
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
@@ -492,6 +493,12 @@ async function runSeq(spec, root, sig) {
       const bm = biasWin.reduce((a, b) => a + b.c, 0) / biasWin.length;
       if (bm <= -30) liveTip = { txt: '⬆ Vas quedando bajo: piensa la nota más arriba y dale aire', until: now + 2.5 };
       else if (bm >= 30) liveTip = { txt: '⬇ Vas quedando alto: suelta, canta más suave', until: now + 2.5 };
+    }
+    if (spec.energy && active && p.rms) { // cantar con ganas: tu volumen vs tu voz hablada
+      eSm = eSm * 0.9 + p.rms * 0.1;
+      const ref = (voiceProfile() || {}).speakRms || 0.04;
+      if (eSm < ref * 0.75) { lowE += 1 / 60; } else lowE = 0;
+      if (!liveTip && lowE > 1.2) liveTip = { txt: '📣 ¡Con más ganas! Más voz que cuando hablas', until: now + 2 };
     }
     if (!liveTip && spec.liveHints && spec.liveHints.leaps) {
       const nxt = scored.find((x) => x.t0 > now && x.t0 - now < beat * 0.9);
@@ -912,7 +919,7 @@ async function runSustain(spec, root, sig) {
 
 // ---------- Tu nota de casa: la altura de tu voz hablada ----------
 // La voz hablada es el gesto vocal que más dominas. Partir cantando cerca de ella es lo más natural.
-async function runSpeak(spec, root, sig) {
+export async function runSpeak(spec, root, sig) {
   if (!spec.noStart) await startButton(root, spec.text || line('ins_speak'), 'Empezar', 'atento', null, spec.voice || (spec.text ? null : 'ins_speak'));
   if (!(await ensureMic(root))) return { score: 0 };
   const c = getCtx();
@@ -936,8 +943,11 @@ async function runSpeak(spec, root, sig) {
   }
   pitches.sort((a, b) => a - b); levels.sort((a, b) => a - b);
   const speak = pitches[Math.floor(pitches.length / 2)];
+  const pm = pitches.reduce((x, y) => x + y, 0) / pitches.length;
+  const speakSD = Math.sqrt(pitches.reduce((x, y) => x + (y - pm) ** 2, 0) / pitches.length); // variación de tu entonación al hablar (semitonos)
+  const speakLo = pitches[Math.floor(pitches.length * 0.05)], speakHi = pitches[Math.floor(pitches.length * 0.95)];
   const speakRms = levels[Math.floor(levels.length / 2)];
-  setVoiceProfile({ speak, speakRms, at: Date.now() });
+  setVoiceProfile({ speak, speakRms, speakSD, speakLo, speakHi, at: Date.now() });
   const home = homeNote();
   const again = h('button', { class: 'btn' }, icon('speaker', 18), 'Oír mi nota de casa');
   again.onclick = () => playNote(home, getCtx().currentTime + 0.05, 1.4, 0.3);
@@ -1092,8 +1102,8 @@ function diagCompare(a, b) {
 // (→ HNR aproximado: menos ruido = voz más limpia), H1−H2 (más alto = voz más aireada; Hillenbrand y otros),
 // y el reparto de energía (graves vs 2–4 kHz, la zona del "formante del cantante" que da brillo: Sundberg).
 // Todo es aproximado: el micrófono del celular y la pieza cambian el timbre medido.
-async function runIdentity(spec, root, sig) {
-  await startButton(root, line('ins_ident'), 'Empezar', 'atento', null, 'ins_ident');
+export async function runIdentity(spec, root, sig) {
+  if (!spec.noStart) await startButton(root, line('ins_ident'), 'Empezar', 'atento', null, 'ins_ident');
   if (!(await ensureMic(root))) return { score: 0 };
   let r = getRange();
   if (r.guessed) { await runRange({}, root, sig); r = getRange(); }
@@ -1172,8 +1182,9 @@ async function runIdentity(spec, root, sig) {
   setIdentity(id);
   // práctico: desde ahora los ejercicios se centran en tu zona dulce
   if (id.sweetLo != null) { setRange({ ...r, comfort: Math.round((id.sweetLo + id.sweetHi) / 2), guessed: false }); id.applied = true; }
+  if (spec.quiet) return { score: 1, info: true, id };
   await new Promise((res) => root.replaceChildren(identityView(id, () => { stopSpeaking(); res(); })));
-  return { score: 1, info: true, detail: 'Identidad vocal guardada en tu perfil.' };
+  return { score: 1, info: true, id, detail: 'Identidad vocal guardada en tu perfil.' };
 }
 export function identityFrom(per, r) {
   const ok = per.filter((p) => p.ok);

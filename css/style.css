@@ -422,3 +422,20 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .why-btn { margin-top: 6px; padding-left: 0; }
 .stage-chip { display: block; margin: 10px auto 0; border: 0; background: var(--primary-l); color: var(--primary-d); font: 800 13px var(--body); padding: 6px 12px; border-radius: 999px; cursor: pointer; }
 .method-st.current { border-color: var(--primary); }
+
+/* Mapa de tu voz */
+.vm-card .tip { color: var(--muted); }
+.vm-card .up { color: var(--ok-d); font-weight: 800; } .vm-card .down { color: var(--bad-d); font-weight: 800; }
+.vrp { position: relative; display: flex; gap: 14px; height: 120px; margin-top: 8px; padding: 0 6px; border-left: 2px solid var(--line); border-bottom: 2px solid var(--line); }
+.vrp-col { position: relative; flex: 1; height: 100%; }
+.vrp-bar { position: absolute; left: 20%; right: 20%; border-radius: 8px; background: var(--primary); }
+.vrp-col small { position: absolute; bottom: -20px; left: 0; right: 0; text-align: center; color: var(--muted); font-weight: 700; }
+.vmap .card { margin: 10px 0; }
+
+/* Medidor de energía */
+.egauge { position: relative; height: 34px; margin: 6px 0 12px; border-radius: 999px; background: var(--track); overflow: hidden; display: flex; }
+.egauge.small { height: 14px; }
+.eg-zone { position: relative; flex: 1; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--ink); opacity: .75; z-index: 1; }
+.eg-fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; border-radius: 999px; background: var(--blue); transition: width .08s; }
+.eg-fill.low { background: #B9B0C9; } .eg-fill.ok { background: var(--warn); } .eg-fill.hi { background: var(--ok); } .eg-fill.b { background: var(--violet); }
+.eg-mark { position: absolute; top: 0; bottom: 0; width: 3px; background: var(--ink); z-index: 2; }

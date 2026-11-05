@@ -3,6 +3,7 @@
 // (final que cae, final cortado), si respiras en medio y si la nota tiembla; luego lo junta por frase y por
 // canción, ubica la palabra exacta donde fallas y arma un plan de práctica con lo que más te conviene.
 import { noteFlags } from './exercises.js';
+import { voiceProfile } from './store.js';
 
 const mean = (a) => a.reduce((x, y) => x + y, 0) / a.length;
 const med = (a) => { const b = [...a].sort((x, y) => x - y); return b[Math.floor(b.length / 2)]; };
@@ -107,6 +108,16 @@ export function songReport({ targets, lines, all, tol = 70 }) {
   if (ons.length >= 6) { const m = med(ons); if (m >= 0.1) G.push({ key: 'tarde', title: 'Vas atrasado con la música', evidence: `Entras en promedio ${r0(m * 1000)} ms tarde (${ons.length} entradas).`, tip: 'Respira antes de cada frase y entra con el pulso. Si usas audífonos Bluetooth, mide la latencia en Perfil.' }); if (m <= -0.1) G.push({ key: 'temprano', title: 'Te adelantas a la música', evidence: `Entras en promedio ${r0(-m * 1000)} ms antes.`, tip: 'Escucha la pista y espera: entra con ella.' }); }
   const shake = done.filter((x) => x.fl.includes('tiembla')).length;
   if (done.length >= 10 && shake / done.length >= 0.25) G.push({ key: 'tiembla', title: 'Tus notas largas tiemblan', evidence: `En ${shake} de ${done.length} notas.`, tip: 'Aire parejo como un hilo; no aprietes la garganta.' });
+  // energía: ¿cantas con ganas o apagado? (comparado con tu voz hablada) y ¿te vas apagando?
+  const prof = voiceProfile();
+  const vf = done.flatMap((x) => x.frames.filter((f) => f.cents != null && f.rms && !f.pre).map((f) => ({ t: f.t, r: f.rms })));
+  if (prof && prof.speakRms && vf.length >= 60) {
+    const ratio = med(vf.map((f) => f.r)) / prof.speakRms;
+    if (ratio < 0.7) G.push({ key: 'apagado', title: 'Cantas apagado', evidence: `Al cantar usas cerca del ${r0(ratio * 100)}% del volumen de tu voz hablada.`, tip: 'Un cantante canta con ganas: cántala como si se la dedicaras a alguien al fondo de la sala, con la garganta suelta. Practica la unidad "Cantar con ganas".', lesson: 'ene1' });
+    const T0 = vf[0].t, T1 = vf[vf.length - 1].t, third = (T1 - T0) / 3;
+    const a1 = vf.filter((f) => f.t < T0 + third).map((f) => f.r), a3 = vf.filter((f) => f.t > T1 - third).map((f) => f.r);
+    if (T1 - T0 > 8 && a1.length > 20 && a3.length > 20 && med(a3) < med(a1) * 0.65) G.push({ key: 'se_apaga', title: 'Te vas apagando', evidence: `En el último tercio cantas con el ${r0((med(a3) / med(a1)) * 100)}% del volumen del comienzo.`, tip: 'Dosifica: no lo des todo al principio, y piensa que el final es lo más importante de la canción.' });
+  }
   const goodL = rep.lines.filter((l) => l.n >= 2 && l.score >= 0.8);
   if (goodL.length) G.unshift({ key: 'bien', tone: 'ok', title: 'Lo que ya te sale bien', evidence: `${goodL.length} frase${goodL.length > 1 ? 's' : ''} con 80% o más de notas afinadas: ${goodL.slice(0, 3).map((l) => '"' + l.text.slice(0, 28) + (l.text.length > 28 ? '…' : '') + '"').join(', ')}.`, tip: 'Úsalas de referencia: así se siente cantar afinado.' });
   rep.global = G;
