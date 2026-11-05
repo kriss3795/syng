@@ -4,10 +4,12 @@ import { getCtx, startMic, readPitch, resetSmoother, latency, decodeFile, micStr
 import { noteName } from './pitch.js';
 import { analyzeSong, parseLyrics, autoAlign, wordTimes } from './analysis.js';
 import { leakCheck } from './exercises.js';
-import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record } from './store.js';
+import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record, load, save } from './store.js';
 import { say, chincol, diagnoseSeq, verdict, line } from './coach.js';
 import { speak, stopSpeaking, sfx, confetti } from './voice.js';
 import { songReport, songObs } from './songcoach.js';
+import { shiftSong, shiftAnalysis, bestTranspose } from './shift.js';
+import { identities } from './store.js';
 import { observe } from './adapt.js';
 
 const cache = new Map();
@@ -91,6 +93,18 @@ export async function songDetail(root, nav, id) {
   const warn = a.quality === 'resta imperfecta' ? say('Ojo: la instrumental no calzó perfecto con la versión con voz (¿son de distinta generación?). Algunas notas pueden estar mal. Lo ideal es subir la voz sola.', 'piensa', { tone: 'warn', compact: true })
     : a.quality === 'sin instrumental' ? say('Sin la instrumental detecté la melodía sobre la mezcla completa: las notas pueden estar MAL y no podrás quitar la voz guía. Sube la instrumental para un análisis confiable.', 'piensa', { tone: 'warn', compact: true }) : null;
   const lineBest = p.lineas ? Object.values(p.lineas) : [];
+  // Tono a tu medida (como Simply Sing): recomendación según tu rango y tu zona dulce
+  const idn = identities().slice(-1)[0];
+  const rec = bestTranspose(a, r, idn ? { lo: idn.sweetLo, hi: idn.sweetHi } : null);
+  const cur = s.transpose || 0;
+  const tLbl = (t) => (t === 0 ? 'Original' : (t > 0 ? '+' : '') + t + ' semitono' + (Math.abs(t) > 1 ? 's' : ''));
+  const setT = async (t) => { s.transpose = Math.max(-6, Math.min(6, t)); await putSong(s); sfx('select'); songDetail(root, nav, id); };
+  const keyCard = h('div', { class: 'card key-card' },
+    h('div', { class: 'row between' }, h('b', {}, 'Tono para tu voz'), h('span', { class: 'pill' + (cur === rec.t ? ' ok' : '') }, tLbl(cur))),
+    h('div', { class: 'row center-row' }, h('button', { class: 'btn', onclick: () => setT(cur - 1) }, '−'), h('span', { class: 'key-val' }, `${noteName(a.lo + cur)}–${noteName(a.hi + cur)}`), h('button', { class: 'btn', onclick: () => setT(cur + 1) }, '+')),
+    h('p', { class: 'small' }, rec.t === cur ? `✓ Este tono es el que mejor calza con tu voz (${Math.round(rec.inZone * 100)}% de la melodía en tu zona cómoda${rec.oct ? ', cantándola una octava ' + (rec.oct < 0 ? 'abajo' : 'arriba') : ''}).` : `Recomendado para tu voz: ${tLbl(rec.t)} (${Math.round(rec.inZone * 100)}% de la melodía en tu zona cómoda).`),
+    rec.t !== cur ? h('button', { class: 'btn primary small', onclick: () => setT(rec.t) }, 'Usar el tono recomendado') : null,
+    h('p', { class: 'small muted' }, 'Cambia el tono de la pista y de la voz sin cambiar la velocidad. La primera vez tarda unos segundos en prepararse.' + (cur ? ' Si la generas de nuevo en Suno, también puedes pedirla en un tono más ' + (cur < 0 ? 'grave' : 'agudo') + '.' : '')));
   const steps = [
     ['escuchar', '1', 'Escuchar', 'La canción completa con la letra y las notas. Sin cantar.', '#escuchar-' + id, p.escuchar ? 'Hecho' : ''],
     ['lineas', '2', 'Línea por línea', 'Escuchas cada línea y la repites. Así aprenden los cantantes.', '#lineas-' + id, lineBest.length ? `${lineBest.filter((x) => x >= 0.7).length}/${a.lines.length} líneas` : ''],
@@ -102,6 +116,8 @@ export async function songDetail(root, nav, id) {
     h('div', { class: 'song-hero' }, h('span', { class: 'song-ic big' }, icon('note', 34)), h('div', {}, h('h1', {}, s.title), h('div', { class: 'small muted' }, `${fmtTime(a.duration)} · ${a.key} · ${noteName(a.lo)}–${noteName(a.hi)} · ${a.notes.length} notas`))),
     say(line('can_intro') + ' <small>' + rangeNote + '</small>', 'feliz', { voice: Object.keys(p).length ? null : 'can_intro', compact: true }),
     warn,
+    keyCard,
+    takesCard(s, root, nav),
     h('div', { class: 'steps' }, steps.map(([k, n, t, d, href, prog]) => h('button', { class: 'step' + (prog ? ' done' : ''), onclick: () => { sfx('select'); nav(href); } },
       h('span', { class: 'step-n' }, prog && k !== 'lineas' ? icon('star', 18) : n), h('div', { class: 'grow' }, h('b', {}, t), h('small', {}, d), prog ? h('span', { class: 'pill ok' }, prog) : null), icon('chevron')))),
     p.report ? h('div', { class: 'card' }, h('b', {}, `Último informe del profe: ${pct(p.report.score)}`), h('p', { class: 'small muted' }, (p.report.global || []).slice(0, 3).join(' · ') || 'Sin problemas destacados.'), h('p', { class: 'small' }, 'Canta en el paso 4 (o karaoke libre) para un nuevo informe y compararlo.')) : null,
@@ -121,12 +137,17 @@ export async function songDetail(root, nav, id) {
   };
 }
 
-async function buffers(s) {
-  if (cache.has(s.id)) return cache.get(s.id);
-  const b = { mix: await decodeFile(s.mix), inst: s.inst ? await decodeFile(s.inst) : null };
-  cache.set(s.id, b);
-  return b;
+async function buffers(s, onProg) {
+  let b = cache.get(s.id);
+  if (!b) { b = { mix: await decodeFile(s.mix), inst: s.inst ? await decodeFile(s.inst) : null }; cache.set(s.id, b); }
+  const t = s.transpose || 0;
+  if (!t) return b;
+  const key = s.id + ':' + t;
+  if (!cache.has(key)) cache.set(key, await shiftSong(b, t, s.analysis.lag || 0, onProg));
+  return cache.get(key);
 }
+const songA = (s) => shiftAnalysis(s.analysis, s.transpose || 0);
+const prepScreen = (root, s) => { const p = h('p', {}, s.transpose ? `Cambiando el tono (${s.transpose > 0 ? '+' : ''}${s.transpose})… 0%` : 'Preparando la canción…'); root.replaceChildren(h('div', { class: 'stage-dark full center' }, chincol('canta', 90), p)); return (f) => { if (s.transpose) p.textContent = `Cambiando el tono (${s.transpose > 0 ? '+' : ''}${s.transpose})… ${Math.round(f * 100)}%`; }; };
 async function saveProgress(id, fn) {
   const s = await getSong(id);
   s.progress = s.progress || {};
@@ -220,6 +241,32 @@ function renderLyrics(L, lines, t) {
   return i;
 }
 
+// ---------- Tus grabaciones: escuchar el progreso en el tiempo ----------
+let takePlaying = null;
+function takesCard(s, root, nav) {
+  const takes = (s.takes || []).slice().reverse();
+  if (!takes.length) return null;
+  const row = (tk) => {
+    const btn = h('button', { class: 'btn small' }, icon('play', 16), h('span', {}, 'Escuchar'));
+    btn.onclick = async () => {
+      const cur = takePlaying; if (cur) { cur(); if (cur.btn === btn) return; }
+      btn.lastChild.textContent = 'Cargando…';
+      const bufs = await buffers({ ...s, transpose: tk.transpose || 0 });
+      const p2 = new Player(bufs, shiftAnalysis(s.analysis, tk.transpose || 0)); p2.setGuide(0);
+      const au = new Audio(URL.createObjectURL(tk.blob));
+      p2.start(tk.pos); setTimeout(() => { au.currentTime = Math.max(0, latency()); au.play(); }, 120);
+      const stop = () => { p2.stop(); au.pause(); btn.lastChild.textContent = 'Escuchar'; takePlaying = null; };
+      stop.btn = btn; takePlaying = stop; au.onended = stop;
+      btn.lastChild.textContent = 'Parar';
+    };
+    return h('div', { class: 'take-row' }, h('div', {}, h('b', {}, new Date(tk.at).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' }) + ' · ' + pct(tk.score)), h('small', { class: 'muted' }, tk.mode === 'solo' ? ' sin guía' : tk.mode === 'guia' ? ' con guía' : ' karaoke')), btn);
+  };
+  const first = takes[takes.length - 1], last = takes[0];
+  return h('div', { class: 'card' }, h('b', {}, 'Tus grabaciones'),
+    takes.length > 1 ? h('p', { class: 'small' }, `${last.score >= first.score ? '📈' : '📉'} De ${pct(first.score)} a ${pct(last.score)}. Escucha la primera y la última: ahí se oye el avance.`) : h('p', { class: 'small muted' }, 'Cada vez que cantas la canción completa se guarda tu toma (las últimas 5, solo en tu celular).'),
+    ...takes.map(row));
+}
+
 // ---------- Informe del profe después de cantar la canción ----------
 export function reportView(rep, prev, { id, nav, lines, setLoop, compare, avgC }) {
   const v = { ...verdict(rep.score) };
@@ -259,12 +306,13 @@ export function reportView(rep, prev, { id, nav, lines, setLoop, compare, avgC }
 export async function practiceView(root, nav, id, sig, mode = 'libre') {
   const s = await getSong(id);
   if (!s) { nav('#canciones'); return; }
-  root.replaceChildren(h('div', { class: 'stage-dark full center' }, chincol('canta', 90), h('p', {}, 'Preparando la canción…')));
-  const bufs = await buffers(s);
-  const a = s.analysis;
+  const prog = prepScreen(root, s);
+  const bufs = await buffers(s, prog);
+  const a = songA(s);
   const player = new Player(bufs, a);
   const st = settings();
   const lines = a.lines;
+  { const ls = load(); ls.lastSong = id; save(); }
   const targets = a.notes.map((n) => ({ t0: n.t0, t1: n.t1, m0: n.m, m1: n.m, frames: [] }));
   const scored = mode === 'guia' || mode === 'solo' || mode === 'libre';
   const party = mode === 'fiesta';
@@ -398,6 +446,11 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
     const prev = (s.progress && s.progress.report) || null;
     const full = done.length >= targets.length * 0.6;
     if (full) await saveProgress(id, (p) => (p.report = { at: Date.now(), score, lines: Object.fromEntries(rep.lines.map((l) => [l.i, l.score])), global: rep.global.map((g) => g.title) }));
+    if (full && autoTake) { // guardar la toma para escuchar tu progreso en el tiempo (las últimas 5, solo en tu celular)
+      const fresh = await getSong(id);
+      fresh.takes = [...(fresh.takes || []), { at: Date.now(), score, blob: autoTake.blob, pos: autoTake.pos, transpose: s.transpose || 0, mode }].slice(-5);
+      await putSong(fresh);
+    }
     if (ended && (mode === 'guia' || mode === 'solo')) saveProgress(id, (p) => (p[mode] = Math.max(p[mode] || 0, score)));
     if (ended && mode === 'solo' && score >= 0.7) { sfx('done'); confetti(); }
     result.replaceChildren(reportView(rep, prev, { id, nav, lines, setLoop, compare: autoTake ? (i, btn) => compareLine(i, btn) : null, avgC }));
@@ -456,9 +509,9 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
 export async function linesView(root, nav, id, sig) {
   const s = await getSong(id);
   if (!s) { nav('#canciones'); return; }
-  root.replaceChildren(h('div', { class: 'stage-dark full center' }, chincol('canta', 90), h('p', {}, 'Preparando…')));
-  const bufs = await buffers(s);
-  const a = s.analysis;
+  const prog = prepScreen(root, s);
+  const bufs = await buffers(s, prog);
+  const a = songA(s);
   const lines = a.lines;
   if (!lines.length) { root.replaceChildren(h('div', { class: 'page' }, say('Esta canción no tiene letra. Agrégala en "Editar letra" para practicar línea por línea.', 'piensa'), h('button', { class: 'btn', onclick: () => nav('#cancion-' + id) }, 'Volver'))); return; }
   const best = (s.progress && s.progress.lineas) || {};

@@ -573,14 +573,28 @@ UNITS.forEach((u) => u.lessons.forEach((l) => {
 
 export const ALL_LESSONS = UNITS.flatMap((u) => u.lessons.map((l) => ({ ...l, unit: u })));
 
-// Calentamiento (≈6 min): aire → lip trill → sirena → escala → arpegio
+// Calentamiento del día (como los "daily warmups" de Simply Sing): cambia cada día para no aburrir,
+// siempre en el orden de los profes: aire → tracto semiocluido → sirena/escala → arpegio.
 export function warmup(short = false) {
-  const w = [
+  const d = new Date(); const seed = d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate();
+  const pick = (arr, k = 0) => arr[(seed + k) % arr.length];
+  const air = pick([
     breath(4, 8, short ? 1 : 2, { text: 'Calentamos. Primero el aire: inhala bajo y suelta un "sss" parejo.' }),
+    { type: 'breath', steps: [{ label: 'Inhala bajo', secs: 3 }, { label: 'Suelta "fff" parejo', secs: 7, sound: true }, { label: 'Descansa', secs: 2 }], reps: short ? 1 : 2, text: 'Hoy el aire con <b>"fff"</b>: labio inferior contra los dientes, soplo parejo.' },
+    { type: 'breath', steps: [{ label: 'Inhala bajo', secs: 4 }, { label: '"Sss" cortitos: s-s-s-s', secs: 6, sound: true }, { label: 'Descansa', secs: 2 }], reps: short ? 1 : 2, text: 'Hoy <b>"s-s-s" cortitos</b>, como un tren: activa el apoyo en cada impulso.' },
+  ]);
+  const sovt = pick([
     seq([glide(0, 7, 2), glide(7, 0, 2)], { mode: 'along', bpm: 70, tol: 150, noTiming: true, reps: [0, 0, 2], labels: 'none', text: 'Lip trill <b>"brrr"</b> siguiendo la sirena.' }),
+    seq([glide(0, 7, 2), glide(7, 0, 2)], { mode: 'along', bpm: 70, tol: 150, noTiming: true, reps: [0, 0, 2], labels: 'none', text: 'Sirena con <b>"uuu"</b> como por una bombilla (o con una bombilla de verdad en un vaso con agua).' }),
+    seq([glide(0, 5, 2), glide(5, 0, 2)], { mode: 'along', bpm: 70, tol: 150, noTiming: true, reps: [0, 0, 2, 4], labels: 'none', text: 'Sirena con <b>"ng"</b> (como al final de "tengo"), cada vez un poquito más arriba.' }),
+  ], 1);
+  const scale = pick([
     seq(SCALE5, { mode: 'along', bpm: 90, tol: 80, reps: short ? [0, 0] : [0, 0, 1, 2], labels: 'mm', text: 'Escala con <b>"mmm"</b>, sintiendo las cosquillas en los labios.' }),
-  ];
-  if (!short) w.push(seq(P([0, 4, 7, 12, 7, 4, [0, 2]]), { mode: 'along', bpm: 85, tol: 80, reps: [0, 0, 1], labels: 'a', wide: true }));
+    seq(SCALE5, { mode: 'along', bpm: 90, tol: 80, reps: short ? [0, 0] : [0, 0, 1, 2], labels: 'mi-a', text: 'Escala con <b>"mi-a"</b>: de la "i" brillante a la "a" abierta sin perder el brillo.' }),
+    seq(P([0, 0, 2, 2, 4, 4, 5, 5, 7, 4, [0, 2]], 0.5), { mode: 'along', bpm: 84, tol: 90, reps: short ? [0, 0] : [0, 0, 1], labels: 'ha', text: '<b>"Ha-ha-ha"</b> cortitos y livianos, como una risa: despierta el apoyo.' }),
+  ], 2);
+  const w = [air, sovt, scale];
+  if (!short) w.push(seq(P([0, 4, 7, 12, 7, 4, [0, 2]]), { mode: 'along', bpm: 85, tol: 80, reps: [0, 0, 1], labels: pick(['a', 'gu', 'no'], 3), wide: true }));
   return w;
 }
 export function extraSession(kind) {

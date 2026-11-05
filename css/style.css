@@ -396,3 +396,15 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .pill.meh { background: var(--warn-l); color: var(--warn-d); } .pill.bad { background: var(--bad-l); color: var(--bad-d); }
 .stage-dark .pill.ok { background: #1F7A4D; color: #DDF8EA; } .stage-dark .pill.meh { background: #8A5E0F; color: #FFF3D9; } .stage-dark .pill.bad { background: #8E2A40; color: #FFE4EA; }
 .stage-dark .btn.line { background: #2B2056; color: #F2EEFF; border-color: #3A2E6E; }
+
+/* Vuelo del Chincol */
+.game { position: fixed; inset: 0; display: flex; flex-direction: column; background: #0E6E6C; color: #fff; }
+.game-top { display: flex; align-items: center; gap: 10px; padding: calc(8px + env(safe-area-inset-top)) 12px 6px; }
+.game-hud { flex: 1; display: flex; justify-content: space-between; align-items: center; font-family: var(--display); font-weight: 700; font-size: 18px; }
+.game-hud .combo { color: #FFD15C; }
+.game-cv { flex: 1; width: 100%; display: block; }
+.game-msg { position: absolute; left: 0; right: 0; top: 38%; text-align: center; font-family: var(--display); font-size: 28px; font-weight: 700; text-shadow: 0 2px 8px rgba(0,0,0,.35); pointer-events: none; }
+.game-levels { display: grid; gap: 10px; margin-top: 12px; }
+.game-lv { display: grid; gap: 4px; text-align: left; cursor: pointer; font: inherit; color: var(--ink); }
+.game-lv.locked { opacity: .5; }
+.sing-now { width: 100%; margin-top: 10px; }

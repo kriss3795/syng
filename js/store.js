@@ -114,7 +114,7 @@ export async function listSongs() {
   const d = await db();
   return new Promise((res, rej) => {
     const r = d.transaction('songs').objectStore('songs').getAll();
-    r.onsuccess = () => res((r.result || []).map(({ mix, inst, voc, ...meta }) => meta).sort((a, b) => b.created - a.created));
+    r.onsuccess = () => res((r.result || []).map(({ mix, inst, voc, takes, ...meta }) => ({ ...meta, nTakes: (takes || []).length })).sort((a, b) => b.created - a.created));
     r.onerror = () => rej(r.error);
   });
 }

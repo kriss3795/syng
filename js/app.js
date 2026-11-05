@@ -2,6 +2,7 @@ import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
 import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES } from './curriculum.js';
 import { run, diagFindings, identityView } from './exercises.js';
 import { phraseExercises } from './songcoach.js';
+import { gameMenu, playGame } from './game.js';
 import { analyze, adaptExercises, warmExtras, remedialFor, liveAdjust, newFindings, obsCount } from './adapt.js';
 import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS, voiceProfile, homeNote, diagnoses, identities } from './store.js';
 import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
@@ -30,7 +31,7 @@ function renderHeader() {
     h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)));
 }
 
-const FOCUS = /^(leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -52,6 +53,15 @@ async function route() {
     if (hsh === 'hoy') return todayClass();
     if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
     if (hsh === 'profe') return profeView();
+    if (hsh === 'cantar-ya') { // calentamiento mínimo (aire + labios) y directo a cantar
+      const ls = load().lastSong;
+      const song = ls ? await getSong(ls) : null;
+      const target = song ? '#solo-' + ls : '#juego-g1';
+      return session({ title: 'Cantar ya', color: 'teal', exercises: warmup(true).slice(0, 2).map((e) => ({ ...e, noScore: true })), id: 'warmup', back: target, backLabel: song ? 'Cantar "' + song.title + '"' : 'Jugar: Vuelo del Chincol',
+        adaptNote: '<b>Un minuto de calentamiento y a cantar.</b> Calentar aunque sea un poco evita forzar la voz y te ayuda a afinar desde la primera nota.' });
+    }
+    if (hsh === 'juego') return gameMenu(view, nav);
+    if (hsh.startsWith('juego-')) return playGame(view, nav, hsh.slice(6), sig);
     if (hsh === 'identidad') return session({ title: 'Tu identidad vocal', color: 'teal', exercises: [{ type: 'identity' }], id: 'identidad' });
     if (hsh === 'diagnostico') return session({ title: 'Diagnóstico de tu voz', color: 'teal', exercises: [{ type: 'diag' }], id: 'diagnostico' });
     if (hsh === 'repaso') return session({ title: 'Repaso', color: 'teal', exercises: reviewExercises(), id: 'repaso' });
@@ -103,7 +113,8 @@ function homeView() {
     h('div', { class: 'hero-row' },
       h('div', { class: 'goal' }, scoreRing(goal, 64), h('div', {}, h('b', {}, 'Meta de hoy'), h('div', { class: 'small muted' }, `${s.lastDay === today() ? s.todayXp || 0 : 0} de ${s.dailyGoal} XP`))),
       next ? h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#hoy'); } }, icon('play', 18), 'Clase de hoy') : h('b', {}, '¡Terminaste el camino! 🏆')),
-    next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null);
+    next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null,
+    h('button', { class: 'btn big sing-now', onclick: () => { sfx('select'); nav('#cantar-ya'); } }, icon('mic', 18), s.lastSong ? 'Cantar ya: tu canción' : 'Cantar ya: 3 minutos'));
   const rec = recommend(s.history || []);
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
     chincol('piensa', 44),
@@ -242,7 +253,7 @@ async function phraseSession(arg) {
     adaptNote: `<b>Vamos a corregir la frase ${i + 1}:</b> "${song.analysis.lines[i].text}".<br>Primero el error puntual, después la frase lenta con "la", con letra, y a velocidad real. Al final vuelve a cantar la canción para comparar.` });
 }
 
-async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_PASS, next, intro, introVoice, adaptNote, back }) {
+async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_PASS, next, intro, introVoice, adaptNote, back, backLabel }) {
   const mySig = sig;
   // el profe adaptativo: lo que ya aprendió de ti ajusta tono, zona y velocidad de esta sesión
   const before = analyze();
@@ -330,7 +341,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
     h('div', { class: 'actionbar' },
       h('button', { class: 'btn', onclick: () => route() }, icon('repeat', 18), 'Repetir'),
       moreLevels ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + id); } }, `Nivel ${level + 1}`)
-      : passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(back || (lesson ? '#aprender' : '#practicar')) }, back ? 'Volver a cantar la canción' : 'Continuar'))));
+      : passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(back || (lesson ? '#aprender' : '#practicar')) }, back ? (backLabel || 'Volver a cantar la canción') : 'Continuar'))));
   if (passed && !hadStreak) setTimeout(() => sfx('streak'), 900);
 }
 
@@ -372,6 +383,7 @@ function gymView() {
   const tile = (hash, ic, t, d, color) => h('button', { class: 'tile ' + color, onclick: () => { sfx('select'); nav(hash); } }, h('span', { class: 'tile-ic' }, icon(ic, 26)), h('b', {}, t), h('small', {}, d));
   view.replaceChildren(h('div', { class: 'page' },
     say('Esto es para practicar fuera de las clases. Lo ideal: un poquito cada día.', 'feliz', { compact: true }),
+    h('button', { class: 'card rec game-card', onclick: () => { sfx('select'); nav('#juego'); } }, chincol('celebra', 52), h('div', {}, h('b', {}, 'Vuelo del Chincol'), h('div', { class: 'small muted' }, 'Juego: vuela con tu voz y pasa por las puertas cantando su nota.')), icon('chevron')),
     h('h2', { class: 'sec' }, 'Calentar y técnica'),
     h('div', { class: 'tiles' },
       tile('#calentamiento', 'sparkle', 'Calentamiento', 'Aire, lip trill y escalas · 6 min', 'orange'),
