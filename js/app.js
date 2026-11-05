@@ -185,7 +185,10 @@ function homeView() {
       h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
       h('div', { class: 'path' }, nodes));
   }
-  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
+  // En celular: todo en una columna. En computador: el camino a la izquierda y tus tarjetas del día a la derecha.
+  const side = [first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  view.replaceChildren(h('div', { class: 'page home' }, installBanner(), h('div', { class: 'home-hero' }, hero),
+    side.length ? h('aside', { class: 'home-side' }, ...side) : null, h('div', { class: 'home-path' }, ...path)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
@@ -559,7 +562,7 @@ function methodView() {
 // ---------- Tu cuenta ----------
 function accountCard() {
   const a = account();
-  return h('button', { class: 'card rec acct-card', onclick: () => nav('#cuenta') }, h('div', { class: 'acct-ic' }, a ? '☁️' : '👤'),
+  return h('button', { class: 'card rec acct-card', onclick: () => nav('#cuenta') }, h('div', { class: 'card-ic' }, a ? '☁️' : '👤'),
     h('div', {}, h('b', {}, a ? 'Tu cuenta' : 'Crea tu cuenta'), h('div', { class: 'small muted' }, a ? a.email + (syncInfo.status === 'error' ? ' · sin conexión' : ' · avance guardado') : 'Guarda tu avance y úsalo en el celular y el computador.')), icon('chevron'));
 }
 function accountView() {
@@ -619,7 +622,7 @@ async function routineToday() {
 function resCard() {
   const t = lastResTest();
   const nat = t ? t.results.filter((x) => x.s != null && x.s >= 0.7).map((x) => RES_INFO[x.id][1].toLowerCase()) : [];
-  return h('button', { class: 'card rec res-card', onclick: () => { sfx('select'); nav(t ? '#recursos-ver' : '#recursos'); } }, h('div', { class: 'res-emojis' }, '🪶〰️🎶'),
+  return h('button', { class: 'card rec res-card', onclick: () => { sfx('select'); nav(t ? '#recursos-ver' : '#recursos'); } }, h('div', { class: 'card-ic' }, '🪶'),
     h('div', {}, h('b', {}, t ? 'Tus recursos vocales' : 'Prueba recursos vocales'), h('div', { class: 'small muted' }, t ? (nat.length ? 'Te salen natural: ' + nat.join(', ') + '.' : 'Ve tus resultados y practica los que van saliendo.') : 'Falsete, vibrato, deslizar, adornos… descubre cuáles se te dan bien (5 min).')), icon('chevron'));
 }
 function routineCard() {
@@ -786,7 +789,7 @@ function profileView() {
   reset.onclick = async () => { if (reset.dataset.sure) { await resetAll(); location.hash = '#aprender'; location.reload(); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar: se borra todo tu progreso'; } };
   const resetSongs = h('button', { class: 'btn ghost danger' }, 'Borrar también mis canciones');
   resetSongs.onclick = async () => { if (resetSongs.dataset.sure) { await resetAll({ songs: true }); location.hash = '#aprender'; location.reload(); } else { resetSongs.dataset.sure = 1; resetSongs.textContent = 'Toca otra vez: se borran progreso y canciones'; } };
-  view.replaceChildren(h('div', { class: 'page' }, ...[
+  view.replaceChildren(h('div', { class: 'page profile' }, ...[
     h('h1', {}, 'Tu progreso'),
     accountCard(),
     (() => { const L = levelOf(s.xp); return h('div', { class: 'card lvl-card' }, h('div', { class: 'row between' }, h('b', {}, `${L.icon} Nivel ${L.n}: ${L.name}`), h('small', { class: 'muted' }, `${s.xp} XP`)), h('div', { class: 'lvlbar' }, h('div', { class: 'pfill', style: `width:${Math.round(L.pct * 100)}%` })), h('small', { class: 'muted' }, `Te faltan ${L.to - s.xp} XP para el nivel ${L.n + 1}.`)); })(),
