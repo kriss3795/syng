@@ -14,10 +14,14 @@ export async function db() {
 }
 export function setDb(fn) { sqlFn = fn; } // para pruebas
 
+// Clave para firmar sesiones: AUTH_SECRET si existe; si no, se deriva de la URL secreta de la base de datos
+// (solo existe en el servidor), así no hay que configurar nada más en Vercel.
 const secret = () => {
   const s = process.env.AUTH_SECRET;
-  if (!s || s.length < 16) throw Object.assign(new Error('Falta AUTH_SECRET (mínimo 16 caracteres) en Vercel'), { status: 500 });
-  return s;
+  if (s && s.length >= 16) return s;
+  const url = process.env.DATABASE_URL || process.env.STORAGE_URL || process.env.POSTGRES_URL;
+  if (!url) throw Object.assign(new Error('Falta conectar la base de datos Neon al proyecto en Vercel'), { status: 500 });
+  return crypto.createHash('sha256').update('syng-auth-v1:' + url).digest('hex');
 };
 const b64u = (b) => Buffer.from(b).toString('base64url');
 
