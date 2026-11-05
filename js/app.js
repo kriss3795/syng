@@ -4,6 +4,7 @@ import { run, diagFindings, identityView, registerRunner } from './exercises.js'
 import { runVoiceMap, voiceMapView } from './voicemap.js';
 registerRunner('voicemap', runVoiceMap);
 import { runEnergy } from './energy.js';
+import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } from './account.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
 registerRunner('resources', runResources);
@@ -39,7 +40,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -63,6 +64,7 @@ async function route() {
     if (hsh === 'profe') return profeView();
     if (hsh === 'metodo') return methodView();
     if (hsh === 'manual') return manualView();
+    if (hsh === 'cuenta') return accountView();
     if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
     if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
       view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {})), h('h1', {}, 'Tus recursos vocales'), resourcesView(t),
@@ -554,6 +556,54 @@ function methodView() {
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver al camino'))));
 }
 
+// ---------- Tu cuenta ----------
+function accountCard() {
+  const a = account();
+  return h('button', { class: 'card rec acct-card', onclick: () => nav('#cuenta') }, h('div', { class: 'acct-ic' }, a ? '☁️' : '👤'),
+    h('div', {}, h('b', {}, a ? 'Tu cuenta' : 'Crea tu cuenta'), h('div', { class: 'small muted' }, a ? a.email + (syncInfo.status === 'error' ? ' · sin conexión' : ' · avance guardado') : 'Guarda tu avance y úsalo en el celular y el computador.')), icon('chevron'));
+}
+function accountView() {
+  const a = account();
+  const back = h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {}));
+  if (a) {
+    const st = h('p', { class: 'small' });
+    const paint = () => { st.textContent = syncInfo.status === 'saving' ? 'Guardando…' : syncInfo.status === 'error' ? '⚠️ ' + syncInfo.error : syncInfo.at ? 'Avance guardado en tu cuenta ✓ (' + new Date(syncInfo.at).toLocaleTimeString('es-CL', { hour: '2-digit', minute: '2-digit' }) + ')' : 'Conectado.'; };
+    paint(); const off = onSync(paint);
+    const syncBtn = h('button', { class: 'btn primary', onclick: async () => { syncBtn.disabled = true; const ch = await pull(); if (!ch) await push(true); syncBtn.disabled = false; if (ch) toast('☁️', 'Avance actualizado', 'Traje lo que practicaste en otro dispositivo.'); } }, 'Sincronizar ahora');
+    view.replaceChildren(h('div', { class: 'page' }, back, h('h1', {}, 'Tu cuenta'),
+      say(`Estás conectado como <b>${a.email}</b>. Tu avance se guarda solo cada vez que practicas. Ingresa con el mismo correo en tu computador o en otro celular y seguirás donde quedaste.`, 'feliz'),
+      h('div', { class: 'card' }, st, syncBtn),
+      h('p', { class: 'small muted' }, 'Se guardan tus lecciones, XP, racha, logros y todas las mediciones de tu voz. Las canciones (archivos de audio) quedan en cada dispositivo porque pesan mucho.'),
+      h('button', { class: 'btn ghost', onclick: () => { off(); signOut(); nav('#perfil'); } }, 'Cerrar sesión en este dispositivo')));
+    return;
+  }
+  const email = h('input', { type: 'email', placeholder: 'tu@correo.com', autocomplete: 'email', class: 'inp' });
+  const pass = h('input', { type: 'password', placeholder: 'Contraseña (mínimo 8 caracteres)', autocomplete: 'current-password', class: 'inp' });
+  const msg = h('p', { class: 'small' });
+  const go = async (action, btn) => {
+    msg.textContent = action === 'register' ? 'Creando tu cuenta…' : 'Ingresando…'; btn.disabled = true;
+    try {
+      const r = await signIn(action, email.value, pass.value);
+      if (r.needChoice) {
+        const d = new Date(r.server.updated).toLocaleDateString('es-CL');
+        view.replaceChildren(h('div', { class: 'page' }, h('h1', {}, '¿Qué avance usamos?'),
+          say(`Tu cuenta ya tiene avance guardado (último cambio: ${d}), y este dispositivo también tiene avance. ¿Con cuál sigues? El otro se reemplaza.`, 'piensa'),
+          h('button', { class: 'btn primary big', onclick: async () => { await chooseSide('server', r.server); toast('☁️', 'Listo', 'Usando el avance de tu cuenta.'); nav('#aprender'); } }, `El de mi cuenta (${r.server.data.xp || 0} XP)`),
+          h('button', { class: 'btn big', onclick: async () => { await chooseSide('local'); toast('☁️', 'Listo', 'Guardé el avance de este dispositivo en tu cuenta.'); nav('#aprender'); } }, `El de este dispositivo (${load().xp || 0} XP)`)));
+        return;
+      }
+      toast('☁️', action === 'register' ? '¡Cuenta creada!' : '¡Hola de nuevo!', r.adopted ? 'Traje tu avance guardado.' : 'Tu avance ya queda guardado en tu cuenta.');
+      nav('#aprender');
+    } catch (e) { msg.textContent = '⚠️ ' + e.message; btn.disabled = false; }
+  };
+  const reg = h('button', { class: 'btn primary big' }, 'Crear cuenta'); reg.onclick = () => go('register', reg);
+  const log = h('button', { class: 'btn big' }, 'Ya tengo cuenta: ingresar'); log.onclick = () => go('login', log);
+  view.replaceChildren(h('div', { class: 'page' }, back, h('h1', {}, 'Tu cuenta'),
+    say('Con una cuenta, tu avance y las mediciones de tu voz te siguen a cualquier dispositivo: el celular, el computador, donde sea.', 'feliz'),
+    h('div', { class: 'card acct-form' }, h('label', {}, 'Correo'), email, h('label', {}, 'Contraseña'), pass, msg, reg, log),
+    h('p', { class: 'small muted' }, 'Tu contraseña se guarda cifrada (no se puede leer). Las canciones quedan en cada dispositivo.')));
+}
+
 // ---------- Tu rutina diaria y tu manual de voz ----------
 async function routineToday() {
   const m = (load().voiceMaps || []).slice(-1)[0] || null;
@@ -738,6 +788,7 @@ function profileView() {
   resetSongs.onclick = async () => { if (resetSongs.dataset.sure) { await resetAll({ songs: true }); location.hash = '#aprender'; location.reload(); } else { resetSongs.dataset.sure = 1; resetSongs.textContent = 'Toca otra vez: se borran progreso y canciones'; } };
   view.replaceChildren(h('div', { class: 'page' }, ...[
     h('h1', {}, 'Tu progreso'),
+    accountCard(),
     (() => { const L = levelOf(s.xp); return h('div', { class: 'card lvl-card' }, h('div', { class: 'row between' }, h('b', {}, `${L.icon} Nivel ${L.n}: ${L.name}`), h('small', { class: 'muted' }, `${s.xp} XP`)), h('div', { class: 'lvlbar' }, h('div', { class: 'pfill', style: `width:${Math.round(L.pct * 100)}%` })), h('small', { class: 'muted' }, `Te faltan ${L.to - s.xp} XP para el nivel ${L.n + 1}.`)); })(),
     (() => { const got = badges(); return h('div', { class: 'card' }, h('div', { class: 'row between' }, h('h3', {}, 'Logros'), h('span', { class: 'pill' }, `${Object.keys(got).length} de ${BADGES.length}`)),
       h('div', { class: 'badges' }, ...BADGES.map((b) => h('div', { class: 'badge' + (got[b.id] ? ' on' : ''), title: b.desc }, h('span', { class: 'b-ic' }, got[b.id] ? b.icon : '🔒'), h('b', {}, b.name), h('small', {}, b.desc))))); })(),
@@ -801,5 +852,8 @@ if (localStorage.getItem('syng.resetTag') !== RESET_TAG) {
   await resetAll();
   setTimeout(() => toast('🌱', 'Empezamos de cero', 'Borré tu progreso y tus mediciones. Ahora conozcamos tu voz desde el principio.'), 900);
 }
+// Con cuenta: primero traigo tu avance (si en otro dispositivo es más nuevo), antes de que nada se guarde aquí.
+if (account()) await Promise.race([pull(), sleep(3500)]);
+document.addEventListener('visibilitychange', async () => { if (document.visibilityState === 'visible' && account() && !FOCUS.test(location.hash.slice(1)) && (await pull())) route(); });
 checkLevel(); // fija tu nivel actual sin celebrar
 route();

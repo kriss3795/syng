@@ -495,3 +495,8 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .res-item p { margin: 4px 0; }
 .res-emojis { font-size: 22px; letter-spacing: -4px; min-width: 52px; }
 .res-meter .pfill.mid { background: #FFC93C; } .res-meter .pfill.warn { background: #FF8A5B; }
+.acct-ic { font-size: 28px; min-width: 44px; text-align: center; }
+.acct-form { display: grid; gap: 8px; }
+.acct-form label { font-weight: 700; font-size: 14px; }
+.inp { font: inherit; padding: 12px 14px; border-radius: 14px; border: 2px solid var(--line, #E6E0DC); background: var(--card, #fff); width: 100%; box-sizing: border-box; }
+.inp:focus { outline: none; border-color: var(--primary); }

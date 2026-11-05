@@ -27,3 +27,9 @@ python3 tools/gen_voice.py kokoro-q8.onnx voices-es.bin em_alex
 (Modelo: npm `kokoro-q8-shards`; voces: npm `kokoro-js/voices`.)
 
 Base pedagógica: Pfordresher & Brown 2007; Hutchins & Peretz 2012; Berglin, Pfordresher & Demorest 2022; Pfordresher & Greenspon 2024; Titze 2006 (SOVT); aprendizaje motor (Maas 2008, NATS); métodos de Seth Riggs, Cathrine Sadolin (CVT), Jo Estill y Cheryl Porter.
+
+## Cuentas (Vercel + Neon)
+- `api/auth.js` (crear cuenta / ingresar) y `api/progress.js` (guardar / traer avance) son funciones de Vercel.
+- Variables en Vercel: `DATABASE_URL` (la pone la integración de Neon) y `AUTH_SECRET` (texto aleatorio largo).
+- Las tablas se crean solas en la primera llamada. Contraseñas con scrypt; sesión con token HMAC (180 días).
+- La app en GitHub Pages usa el servidor `API_DEFAULT` de `js/account.js`; abierta desde Vercel usa el mismo sitio.

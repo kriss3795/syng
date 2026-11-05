@@ -1,0 +1,9 @@
+{
+  "name": "syng",
+  "private": true,
+  "type": "module",
+  "description": "Syng: app para aprender a cantar. Los archivos estáticos se sirven tal cual; /api son funciones de Vercel con Neon (Postgres).",
+  "dependencies": {
+    "@neondatabase/serverless": "^0.10.4"
+  }
+}

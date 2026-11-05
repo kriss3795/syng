@@ -25,9 +25,14 @@ export function load() {
   }
   return state;
 }
-export function save() {
+export const saveHooks = []; // p. ej. sincronizar con tu cuenta
+export function save(touch = true) {
+  if (touch && state) state.updatedAt = Date.now();
   try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {}
+  if (touch) saveHooks.forEach((f) => { try { f(); } catch (e) {} });
 }
+// Reemplaza todo tu avance (al traerlo desde tu cuenta)
+export function replaceState(data) { state = { ...structuredClone(DEFAULT), ...data }; save(false); }
 export const settings = () => load().settings;
 export function setSetting(k, v) { load().settings[k] = v; save(); }
 
