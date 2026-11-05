@@ -4,7 +4,9 @@ import { run, diagFindings, identityView, registerRunner } from './exercises.js'
 import { runVoiceMap, voiceMapView } from './voicemap.js';
 registerRunner('voicemap', runVoiceMap);
 import { runEnergy } from './energy.js';
+import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
+registerRunner('resources', runResources);
 import { phraseExercises } from './songcoach.js';
 import { track, checkLevel, levelOf, dailyQuests, openChest, chestState, weekDots, applyFreeze, freezes, BADGES, badges, toast } from './fun.js';
 import { gameMenu, playGame } from './game.js';
@@ -37,7 +39,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -61,6 +63,10 @@ async function route() {
     if (hsh === 'profe') return profeView();
     if (hsh === 'metodo') return methodView();
     if (hsh === 'manual') return manualView();
+    if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
+    if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
+      view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {})), h('h1', {}, 'Tus recursos vocales'), resourcesView(t),
+        h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#recursos') }, 'Probar otra vez')))); return; }
     if (hsh === 'rutina') { const rt = await routineToday(); return session({ title: 'Tu rutina de hoy', color: 'teal', exercises: rt.exercises, id: 'rutina', back: '#aprender', backLabel: 'Volver al inicio',
       adaptNote: '<b>Tu rutina de hoy, hecha para tu voz (≈10 min):</b><br>' + rt.why.map((w, i) => `${i + 1}. ${w}`).join('<br>') + (load().voiceMaps && load().voiceMaps.length ? '' : '<br><small>Haz el mapa de tu voz para que la rutina se ajuste aún más a ti.</small>') }); }
     if (hsh === 'cantar-ya') { // calentamiento mínimo (aire + labios) y directo a cantar
@@ -177,7 +183,7 @@ function homeView() {
       h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
       h('div', { class: 'path' }, nodes));
   }
-  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, first ? null : questsCard(), first ? null : routineCard(), profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
+  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
@@ -310,7 +316,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
       h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); res(); } }, 'Vamos')))));
   }
   const scores = [], metrics = { cents: [], timing: [] }, issueKeys = [];
-  let worst = null;
+  let worst = null; const toReview = [];
   for (let i = 0; i < exercises.length; i++) {
     if (mySig.aborted) return;
     fill.style.width = (i / exercises.length) * 100 + '%';
@@ -324,7 +330,13 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
     }
     let res, fails = 0, easier = false;
     while (true) {
-      res = await run(ex, stage, mySig);
+      try { res = await run(ex, stage, mySig); }
+      catch (err) { // un ejercicio con problemas nunca debe dejarte pegado
+        console.error(err);
+        await new Promise((ok) => stage.replaceChildren(h('div', { class: 'ex' }, say('Este ejercicio tuvo un problema técnico. Lo salto para que sigas; no cuenta en tu nota.', 'piensa', { tone: 'warn' }), h('div', { class: 'grow' }),
+          h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => ok() }, 'Seguir')))));
+        res = { score: null, skipped: true };
+      }
       if (mySig.aborted) return;
       if (res.info || res.skipped || ex.noScore) break;
       if (res.score < 0.7) fails++;
@@ -334,12 +346,27 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
     }
     if (res.maxCombo) track('combo', { n: res.maxCombo });
     if (!res.info && !res.skipped && !ex.noScore) track('exercise', { type: ex.type, score: res.score });
+    if (!res.info && !res.skipped && !ex.noScore && res.score < 0.7) toReview.push({ ex: exercises[i], at: scores.length });
     if (!res.info && !res.skipped && !ex.noScore) {
       scores.push(res.score);
       if (res.cents != null) metrics.cents.push(res.cents);
       if (res.timing != null) metrics.timing.push(res.timing);
       (res.issues || []).slice(0, 2).forEach((x) => issueKeys.push(x.key));
       if (res.issues && res.issues[0] && (!worst || res.score < worst.score)) worst = { score: res.score, issue: res.issues[0] };
+    }
+  }
+  // Repaso al final (como Duolingo): vuelves a lo que más te costó, unos minutos después. Esa pausa ayuda a fijarlo.
+  if (toReview.length && !mySig.aborted) {
+    const rv = toReview.sort((a, b) => scores[a.at] - scores[b.at])[0];
+    await new Promise((ok) => stage.replaceChildren(h('div', { class: 'ex' }, say('<b>Repaso final.</b> Antes de terminar, volvamos al ejercicio que más te costó. Ahora que calentaste, suele salir mejor. Si mejoras, cuenta tu mejor intento.', 'atento'), h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); ok(); } }, 'Repasar')))));
+    let r2 = null;
+    try { r2 = await run({ ...rv.ex, _sid: sid, _pos: 99 }, stage, mySig); } catch (e) { console.error(e); }
+    if (mySig.aborted) return;
+    if (r2 && r2.score != null && !r2.skipped) {
+      if (r2.score > scores[rv.at]) scores[rv.at] = r2.score;
+      await new Promise((ok) => stage.replaceChildren(h('div', { class: 'ex' }, say(r2.score >= 0.7 ? '¡Eso! En el repaso te salió. Así se fija lo aprendido.' : 'Sigue costando, y está bien: volverá en tus repasos de los próximos días hasta que salga.', r2.score >= 0.7 ? 'celebra' : 'piensa'), h('div', { class: 'grow' }),
+        h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => ok() }, 'Terminar')))));
     }
   }
   fill.style.width = '100%';
@@ -539,6 +566,12 @@ async function routineToday() {
   } }
   return dailyRoutine({ map: m, findings: analyze().findings.filter((f) => f.tone !== 'ok'), phrase });
 }
+function resCard() {
+  const t = lastResTest();
+  const nat = t ? t.results.filter((x) => x.s != null && x.s >= 0.7).map((x) => RES_INFO[x.id][1].toLowerCase()) : [];
+  return h('button', { class: 'card rec res-card', onclick: () => { sfx('select'); nav(t ? '#recursos-ver' : '#recursos'); } }, h('div', { class: 'res-emojis' }, '🪶〰️🎶'),
+    h('div', {}, h('b', {}, t ? 'Tus recursos vocales' : 'Prueba recursos vocales'), h('div', { class: 'small muted' }, t ? (nat.length ? 'Te salen natural: ' + nat.join(', ') + '.' : 'Ve tus resultados y practica los que van saliendo.') : 'Falsete, vibrato, deslizar, adornos… descubre cuáles se te dan bien (5 min).')), icon('chevron'));
+}
 function routineCard() {
   const done = (load().history || []).some((x) => x.type === 'rutina' && x.day === today());
   return h('button', { class: 'card rec routine' + (done ? ' done' : ''), onclick: () => { sfx('select'); nav('#rutina'); } }, chincol(done ? 'celebra' : 'feliz', 48),
@@ -571,6 +604,9 @@ function manualView() {
   if (id && id.texture === 'limpia') res.push('🎶 <b>Adornos y melismas</b>: con un sonido limpio se escuchan nítidos.');
   if (id && /aire/.test(id.texture || '')) res.push('🌬️ Tu aire natural es un color íntimo; para los momentos fuertes, trabaja el ataque limpio para cerrar más la voz.');
   if (pas != null) res.push(`🪶 <b>Quiebre a falsete</b> cerca de ${nn(pas)}: úsalo a propósito como color en las notas altas.`);
+  const rt = lastResTest();
+  if (rt) { const nat = rt.results.filter((x) => x.s != null && x.s >= 0.7); if (nat.length) res.unshift(`✅ <b>Medido en tu prueba:</b> te salen natural ${nat.map((x) => RES_INFO[x.id][0] + ' ' + RES_INFO[x.id][1].toLowerCase()).join(', ')}. Úsalos en tus canciones: son tu sello.`); }
+  else res.push('🧪 Aún no pruebas tus recursos: <a href="#recursos">hazlo aquí</a> y te digo cuáles se te dan bien.');
   view.replaceChildren(h('div', { class: 'page' }, back,
     h('h1', {}, 'Tu manual de voz'),
     say('Esto es cómo usar <b>tu</b> voz, no una voz cualquiera: está escrito con lo que medí de ti.', 'feliz', { compact: true }),
@@ -696,8 +732,10 @@ function profileView() {
     } catch (e) { calibMsg.textContent = 'Permite el micrófono para medir.'; }
     stopMic(); calibBtn.disabled = false;
   };
-  const reset = h('button', { class: 'btn ghost danger' }, 'Borrar todo mi progreso');
-  reset.onclick = () => { if (reset.dataset.sure) { resetAll(); nav('#aprender'); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar'; } };
+  const reset = h('button', { class: 'btn ghost danger' }, 'Empezar de cero (borra progreso y mediciones)');
+  reset.onclick = async () => { if (reset.dataset.sure) { await resetAll(); location.hash = '#aprender'; location.reload(); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar: se borra todo tu progreso'; } };
+  const resetSongs = h('button', { class: 'btn ghost danger' }, 'Borrar también mis canciones');
+  resetSongs.onclick = async () => { if (resetSongs.dataset.sure) { await resetAll({ songs: true }); location.hash = '#aprender'; location.reload(); } else { resetSongs.dataset.sure = 1; resetSongs.textContent = 'Toca otra vez: se borran progreso y canciones'; } };
   view.replaceChildren(h('div', { class: 'page' }, ...[
     h('h1', {}, 'Tu progreso'),
     (() => { const L = levelOf(s.xp); return h('div', { class: 'card lvl-card' }, h('div', { class: 'row between' }, h('b', {}, `${L.icon} Nivel ${L.n}: ${L.name}`), h('small', { class: 'muted' }, `${s.xp} XP`)), h('div', { class: 'lvlbar' }, h('div', { class: 'pfill', style: `width:${Math.round(L.pct * 100)}%` })), h('small', { class: 'muted' }, `Te faltan ${L.to - s.xp} XP para el nivel ${L.n + 1}.`)); })(),
@@ -711,6 +749,7 @@ function profileView() {
       h('p', {}, r.guessed ? 'Rango sin medir todavía.' : `Rango cómodo: ${noteName(r.low)} a ${noteName(r.high)} (${r.high - r.low} semitonos). Zona central: ${noteName(r.comfort)}.`),
       voiceProfile()?.speak ? h('p', {}, `Voz hablada ≈ ${noteName(Math.round(voiceProfile().speak))} · tu nota de casa: ${noteName(homeNote())}.`) : null,
       h('button', { class: 'btn primary', onclick: () => nav('#manual') }, icon('note', 18), 'Tu manual de voz'),
+      h('button', { class: 'btn', onclick: () => nav(lastResTest() ? '#recursos-ver' : '#recursos') }, '🪶 Tus recursos vocales'),
       h('button', { class: 'btn', onclick: () => nav('#profe') }, icon('ear', 18), 'Lo que he aprendido de ti'),
       mapCard(),
       diagCard(),
@@ -724,7 +763,7 @@ function profileView() {
       sw('echoCancel', 'Cancelación de eco', 'Solo si cantas sin audífonos y la música confunde al detector', false),
       h('label', { class: 'set-row' }, h('span', {}, h('b', {}, 'Sonido de las notas guía')), timbre),
       h('div', { class: 'set-row col' }, h('span', {}, h('b', {}, 'Latencia (ms)'), h('small', {}, 'Para medir bien si entras a tiempo. Mídela sin audífonos. Con Bluetooth el retraso es mayor: para ritmo, mejor audífonos con cable.')), h('div', { class: 'row' }, lat, calibBtn), calibMsg),
-      reset),
+      reset, resetSongs),
     h('p', { class: 'small muted', html: '<b>Basado en:</b> Pfordresher & Brown 2007; Hutchins & Peretz 2012; Berglin, Pfordresher & Demorest 2022; Pfordresher & Greenspon 2024; Titze 2006 (SOVT); aprendizaje motor (Maas 2008, NATS); métodos de Seth Riggs, Cathrine Sadolin, Jo Estill y Cheryl Porter. Voz del Chincol: Kokoro (Apache 2.0). Detección de tono: McLeod Pitch Method.' }),
   ].filter(Boolean)));
 }
@@ -755,5 +794,12 @@ function installBanner(force = false) {
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
 document.addEventListener('pointerdown', () => getCtx(), { once: true });
+// Reinicio pedido por Kriss (5-nov-2026): una sola vez, empezar de cero para medir su voz desde el principio.
+const RESET_TAG = 'cero-2026-11-05';
+if (localStorage.getItem('syng.resetTag') !== RESET_TAG) {
+  localStorage.setItem('syng.resetTag', RESET_TAG);
+  await resetAll();
+  setTimeout(() => toast('🌱', 'Empezamos de cero', 'Borré tu progreso y tus mediciones. Ahora conozcamos tu voz desde el principio.'), 900);
+}
 checkLevel(); // fija tu nivel actual sin celebrar
 route();

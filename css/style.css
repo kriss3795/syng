@@ -486,3 +486,12 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 @keyframes combo { 0% { opacity: 0; transform: translateY(10px) scale(.8); } 20% { opacity: 1; transform: translateY(0) scale(1.15); } 70% { opacity: 1; } 100% { opacity: 0; transform: translateY(-14px); } }
 @media (prefers-reduced-motion: reduce) { .chest.ready, .lu-bird, .combo-pop.go, .ftoast { animation: none !important; } .ftoast { transform: translate(-50%, 0); } }
 .manual-sec h3 { margin-top: 0; } .routine.done { border-color: #BFEBD3; background: var(--ok-l); }
+.res-meter { height: 12px; border-radius: 99px; background: var(--line, #eee); overflow: hidden; margin: 12px 0; }
+.res-meter .pfill { height: 100%; }
+.res-sec h3 { margin-top: 0; }
+.res-sec.ok { border-color: #BFEBD3; }
+.res-item { padding: 8px 0; border-top: 1px solid var(--line, #eee); }
+.res-item:first-of-type { border-top: 0; }
+.res-item p { margin: 4px 0; }
+.res-emojis { font-size: 22px; letter-spacing: -4px; min-width: 52px; }
+.res-meter .pfill.mid { background: #FFC93C; } .res-meter .pfill.warn { background: #FF8A5B; }

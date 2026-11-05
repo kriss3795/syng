@@ -78,7 +78,17 @@ export function setLesson(id, score, level = LEVELS_TO_PASS) {
   save();
   return stars;
 }
-export function resetAll() { state = structuredClone(DEFAULT); save(); }
+// Empezar de cero: borra progreso, mediciones de tu voz, diagnósticos, misiones y logros.
+// De tus canciones borra tus tomas, informes y el tono elegido; con songs: true borra también las canciones.
+export async function resetAll({ songs = false } = {}) {
+  state = structuredClone(DEFAULT); save();
+  try {
+    if (songs) { await new Promise((res) => { const r = indexedDB.deleteDatabase(DBN); r.onsuccess = r.onerror = r.onblocked = () => res(); }); return; }
+    const d = await db();
+    const all = await new Promise((res, rej) => { const r = d.transaction('songs').objectStore('songs').getAll(); r.onsuccess = () => res(r.result || []); r.onerror = () => rej(r.error); });
+    for (const s of all) { delete s.progress; delete s.takes; delete s.transpose; await putSong(s); }
+  } catch (e) { console.warn('reset canciones', e); }
+}
 
 // ---------- IndexedDB para canciones ----------
 const DBN = 'syng-songs';

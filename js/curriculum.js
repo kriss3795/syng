@@ -587,6 +587,7 @@ export const UNITS = [
     ] },
   ] },
   { id: 'res', title: 'Tus recursos vocales', desc: 'Técnicas para cantar de verdad: voz íntima, adornos, deslizar, quiebre a falsete y voz llena arriba', color: 'green', lessons: [
+    { id: 'res0', title: 'Descubre tus recursos', once: true, intro: 'Vas a probar 9 recursos vocales (falsete, vibrato, deslizar, adornos y más) y te digo cuáles te salen natural.', build: () => [{ type: 'resources' }] },
     { id: 'res1', title: 'Voz íntima', build: () => [
       tec('tec_intima', 'Aire a propósito'),
       { type: 'sustain', home: [0, 2], secs: 4, tol: 100, text: 'Canta <b>casi susurrando, pero con nota</b>: el aire se escucha a propósito y la nota no se mueve. Así se cantan los versos suaves.' },
@@ -723,6 +724,7 @@ export function applyLevel(exs, level, keepInfo = false) {
       if (e.hold) e.hold = Math.max(0.7, +(e.hold * 0.85).toFixed(2));
       if (e.secs && e.type !== 'breath') e.secs = Math.max(3, e.secs - 1);
       if (e.feedback === 'after') e.feedback = 'live';
+      if (e.type === 'seq') e.noFade = true; // en el nivel 1 siempre ves tu voz
       if (e.type === 'seq' && e.reps) {
         const r0 = e.reps[0];
         e.reps = e.reps.map(() => r0); // mismo tono en todas las rondas

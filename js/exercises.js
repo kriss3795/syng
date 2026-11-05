@@ -21,7 +21,7 @@ export async function ensureMic(root) {
 
 export function startButton(root, text, label = 'Empezar', mood = 'atento', extra = null, voice = null) {
   return new Promise((res) => {
-    const b = h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); getCtx(); res(); } }, label);
+    const b = h('button', { class: 'btn primary big', onclick: () => { try { stopSpeaking(); sfx('select'); getCtx(); } catch (e) { console.warn(e); } res(); } }, label);
     root.replaceChildren(h('div', { class: 'ex' }, say(text, mood, { voice }), extra, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, b)));
   });
 }
@@ -431,6 +431,10 @@ async function runSeq(spec, root, sig) {
     t += beat;
   });
   const endT = t;
+  // Retroalimentación que se retira (hipótesis de guía, Salmoni y Schmidt): en la última ronda no ves tu voz,
+  // así aprendes a guiarte por tu oído y lo aprendido se retiene mejor. Al final igual te muestro el resultado.
+  const fadeAt = feedback === 'live' && !spec.noFade && rounds.length >= 3 ? rounds[rounds.length - 1].t0 : null;
+  if (fadeAt != null) cues.push({ t0: fadeAt - 0.3, t1: fadeAt + 2.2, txt: 'Última ronda: sin mirar tu línea. Confía en tu oído 👂' });
 
   const canvas = h('canvas', { class: 'roll' });
   const coachBox = h('div');
@@ -440,6 +444,8 @@ async function runSeq(spec, root, sig) {
   const stopBtn = h('button', { class: 'btn ghost' }, 'Detener');
   let stopped = false; stopBtn.onclick = () => (stopped = true);
   const roundPill = h('span', { class: 'pill' });
+  const comboEl = h('div', { class: 'combo-pop' });
+  const comboPop = (n) => { comboEl.textContent = n >= 5 ? `🔥 ¡${n} seguidas!` : `+${n} seguidas`; comboEl.classList.remove('go'); void comboEl.offsetWidth; comboEl.classList.add('go'); };
   root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, h('div', { class: 'combo-wrap' }, comboEl), canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
   const roll = new Roll(canvas, { span: Math.max(4, Math.min(8, beat * 10)), nowFrac: 0.3 });
   roll.targets = targets.map((x) => x);
@@ -458,8 +464,6 @@ async function runSeq(spec, root, sig) {
   const scored = targets.filter((x) => !x.demo);
   const all = []; // todos los cuadros: {t, m (suavizado), raw}
   const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null; let eSm = 0, lowE = 0; let combo = 0, maxCombo = 0;
-  const comboEl = h('div', { class: 'combo-pop' });
-  const comboPop = (n) => { comboEl.textContent = n >= 5 ? `🔥 ¡${n} seguidas!` : `+${n} seguidas`; comboEl.classList.remove('go'); void comboEl.offsetWidth; comboEl.classList.add('go'); };
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
@@ -514,7 +518,7 @@ async function runSeq(spec, root, sig) {
     }
     if (liveTip && now > liveTip.until) liveTip = null;
     roll.addUser(now, p.midi, ok);
-    roll.draw(now, { showUser: feedback === 'live' });
+    roll.draw(now, { showUser: feedback === 'live' && (fadeAt == null || now < fadeAt - 0.3) });
     const cur = targets.find((x) => now >= x.t0 && now <= x.t1);
     const cue = cues.find((q) => now >= q.t0 && now <= q.t1);
     const rd = rounds.findIndex((q) => now >= q.t0 - beat && now <= q.t1 + beat);
