@@ -587,8 +587,10 @@ export function noteFlags(tg, vibratoOk = false) {
   const bm = body.length >= 3 ? body.reduce((a, f) => a + f.cents, 0) / body.length : null;
   const head = v.filter((f) => f.t < tg.t0 + Math.min(0.3, d * 0.35)).map((f) => (f.rc != null ? f.rc : f.cents));
   if (bm != null && Math.abs(bm) < 70 && head.length >= 2) {
-    if (head[0] <= -70 && head[0] < bm - 50) fl.push('sc');
-    else if (head[0] >= 70 && head[0] > bm + 50) fl.push('sl');
+    // debe verse el movimiento hacia la nota (no una nota anterior sostenida)
+    const rise = head[head.length - 1] - head[0];
+    if (head[0] <= -70 && head[0] > -400 && head[0] < bm - 50 && rise >= 50) fl.push('sc');
+    else if (head[0] >= 70 && head[0] < 400 && head[0] > bm + 50 && rise <= -50) fl.push('sl');
   }
   if (d >= 0.6 && bm != null && Math.abs(bm) < 70) {
     const tail = v.filter((f) => f.t > tg.t1 - d * 0.22);
@@ -603,8 +605,11 @@ export function noteFlags(tg, vibratoOk = false) {
     }
     if (maxRun >= 10 && voiceAfter) fl.push('aire');
   }
-  if (!vibratoOk && body.length >= 10) {
-    const sd = Math.sqrt(body.reduce((a, f) => a + (f.cents - bm) ** 2, 0) / body.length);
+  // temblor: solo en el centro de la nota (sin la entrada ni el final, que tienen sus propias manías)
+  const core = v.filter((f) => f.t > tg.t0 + d * 0.25 && f.t < tg.t1 - d * 0.35);
+  if (!vibratoOk && core.length >= 10 && !fl.includes('cae')) {
+    const cm = core.reduce((a, f) => a + f.cents, 0) / core.length;
+    const sd = Math.sqrt(core.reduce((a, f) => a + (f.cents - cm) ** 2, 0) / core.length);
     if (sd > 32) fl.push('tiembla');
   }
   return fl;

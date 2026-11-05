@@ -7,6 +7,8 @@ import { leakCheck } from './exercises.js';
 import { putSong, getSong, listSongs, deleteSong, settings, setSetting, getRange, addXp, record } from './store.js';
 import { say, chincol, diagnoseSeq, verdict, line } from './coach.js';
 import { speak, stopSpeaking, sfx, confetti } from './voice.js';
+import { songReport, songObs } from './songcoach.js';
+import { observe } from './adapt.js';
 
 const cache = new Map();
 const fmtTime = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -102,6 +104,7 @@ export async function songDetail(root, nav, id) {
     warn,
     h('div', { class: 'steps' }, steps.map(([k, n, t, d, href, prog]) => h('button', { class: 'step' + (prog ? ' done' : ''), onclick: () => { sfx('select'); nav(href); } },
       h('span', { class: 'step-n' }, prog && k !== 'lineas' ? icon('star', 18) : n), h('div', { class: 'grow' }, h('b', {}, t), h('small', {}, d), prog ? h('span', { class: 'pill ok' }, prog) : null), icon('chevron')))),
+    p.report ? h('div', { class: 'card' }, h('b', {}, `Último informe del profe: ${pct(p.report.score)}`), h('p', { class: 'small muted' }, (p.report.global || []).slice(0, 3).join(' · ') || 'Sin problemas destacados.'), h('p', { class: 'small' }, 'Canta en el paso 4 (o karaoke libre) para un nuevo informe y compararlo.')) : null,
     h('div', { class: 'tiles' },
       h('button', { class: 'tile green', onclick: () => nav('#fiesta-' + id) }, h('span', { class: 'tile-ic' }, icon('party', 24)), h('b', {}, 'Modo fiesta'), h('small', {}, 'Solo la letra en grande, para cantar con otros')),
       h('button', { class: 'tile blue', onclick: () => nav('#practicar-' + id) }, h('span', { class: 'tile-ic' }, icon('mic', 24)), h('b', {}, 'Karaoke libre'), h('small', {}, 'Todos los controles'))),
@@ -182,9 +185,14 @@ function evalFrame(targets, ut, p, tolCents, st, state) {
     let d = p.midi - act.m0;
     if (st.octaveFree) { const k = Math.round(d / 12); d -= 12 * k; state.shift = -12 * k; }
     ok = Math.abs(d * 100) <= tolCents / 2;
-    act.frames.push({ t: ut, cents: d * 100, ok });
+    const rd = p.raw != null ? p.raw - act.m0 - (st.octaveFree ? 12 * Math.round((p.raw - act.m0) / 12) : 0) : null;
+    act.frames.push({ t: ut, cents: d * 100, ok, rc: rd != null ? rd * 100 : null, rms: p.rms });
   } else if (act) act.frames.push({ t: ut, cents: null, ok: false });
-  else if (p.midi != null && st.octaveFree && targets.length) {
+  if (!act && p.raw != null) { // justo antes de una nota: sirve para ver si entras desde abajo (no se puntúa)
+    const up = targets.find((x) => x.t0 > ut && x.t0 - ut <= 0.15);
+    if (up) { let d = p.raw - up.m0; if (st.octaveFree) d -= 12 * Math.round(d / 12); up.frames.push({ t: ut, cents: d * 100, rc: d * 100, ok: null, pre: true, rms: p.rms }); }
+  }
+  if (!act && p.midi != null && st.octaveFree && targets.length) {
     // sin nota activa: ubica tu voz en la octava de la nota más cercana en el tiempo (para que la línea no salte)
     let near = targets[0], bd = 1e9;
     for (const x of targets) { const d = Math.min(Math.abs(ut - x.t0), Math.abs(ut - x.t1)); if (d < bd) { bd = d; near = x; } }
@@ -210,6 +218,41 @@ function renderLyrics(L, lines, t) {
   }
   if (i >= 0) [...L.cur.children].forEach((sp, k) => sp.classList.toggle('on', lines[i].words[k] && t >= lines[i].words[k].t));
   return i;
+}
+
+// ---------- Informe del profe después de cantar la canción ----------
+export function reportView(rep, prev, { id, nav, lines, setLoop, compare, avgC }) {
+  const v = { ...verdict(rep.score) };
+  const warns = rep.global.filter((g) => g.tone !== 'ok').length;
+  if (rep.score >= 0.85 && warns) v.title = warns > 1 ? 'Bien afinado. Ahora, los detalles' : 'Bien afinado, con un detalle'; // honesto: notas afinadas no es lo mismo que canto sin vicios
+  const delta = prev && prev.score != null ? rep.score - prev.score : null;
+  const improved = prev && prev.lines ? rep.lines.filter((l) => prev.lines[l.i] != null && l.score - prev.lines[l.i] >= 0.2) : [];
+  const tones = { ok: '✓', mid: '•', warn: '!' };
+  const lineCard = (l) => {
+    const p = l.probs[0];
+    const cmpBtn = compare ? h('button', { class: 'btn small' }, icon('speaker', 16), h('span', {}, 'Original vs tú')) : null;
+    if (cmpBtn) cmpBtn.onclick = () => compare(l.i, cmpBtn);
+    return h('div', { class: 'k-card phrase' },
+      h('div', { class: 'row between' }, h('b', {}, `Frase ${l.i + 1}`), h('span', { class: 'pill ' + (l.score >= 0.8 ? 'ok' : l.score >= 0.5 ? 'meh' : 'bad') }, pct(l.score))),
+      h('p', { class: 'phrase-words' }, ...l.words.map((w) => h('span', { class: 'pw ' + (w.s || 'na'), title: w.c != null ? (w.c > 0 ? '+' : '') + w.c + ' cents' : '' }, w.w + ' '))),
+      ...l.probs.slice(0, 2).map((q) => h('div', { class: 'prob' }, h('p', { html: q.text }), h('p', { class: 'tip' }, '👉 ' + q.tip))),
+      h('div', { class: 'row wrap' }, cmpBtn,
+        h('button', { class: 'btn small', onclick: () => setLoop(l.i) }, icon('repeat', 16), 'Repetir con pista'),
+        h('button', { class: 'btn small primary', onclick: () => nav(`#frase-${id}-${l.i}${p ? '-' + p.key : ''}`) }, icon('target', 16), 'Corregir')));
+  };
+  const problemLines = rep.lines.filter((l) => l.n >= 2 && (l.score < 0.8 || l.probs.length)).sort((a, b) => a.i - b.i);
+  const top = rep.global.find((g) => g.tone !== 'ok');
+  return h('div', { class: 'report' },
+    h('div', { class: 'k-card' },
+      h('div', { class: 'sheet-head' }, scoreRing(rep.score, 72), h('div', {}, h('h2', {}, v.title), h('p', { class: 'small' }, `${rep.hits} de ${rep.n} notas afinadas` + (avgC != null ? ` · ${Math.round(avgC)} cents de desvío al llegar` : '')))),
+      delta != null ? h('p', { class: 'small' }, `${delta >= 0 ? '📈' : '📉'} La vez anterior: ${pct(prev.score)} → ahora ${pct(rep.score)}.` + (improved.length ? ` Mejoraste la${improved.length > 1 ? 's' : ''} frase${improved.length > 1 ? 's' : ''} ${improved.map((l) => l.i + 1).join(', ')}.` : '')) : null,
+      say(top ? `<b>Lo principal en esta canción:</b> ${top.title.toLowerCase()}. ${top.tip}` : rep.score >= 0.7 ? '¡Muy bien cantada! Prueba sin voz guía o con más exigencia.' : 'Revisemos frase por frase.', top ? 'piensa' : v.mood, { compact: true, voice: v.voice })),
+    rep.global.length ? h('div', { class: 'k-card' }, h('h3', {}, 'Cómo cantas esta canción'),
+      h('div', { class: 'diag-list' }, ...rep.global.map((g) => h('div', { class: 'diag-item ' + (g.tone || 'warn') }, h('div', { class: 'diag-ic' }, tones[g.tone || 'warn']), h('div', {}, h('b', {}, g.title), h('p', {}, g.evidence), h('p', { class: 'tip' }, '👉 ' + g.tip)))))) : null,
+    rep.plan.length ? h('div', { class: 'k-card' }, h('h3', {}, 'Tu plan de práctica'),
+      h('p', { class: 'small' }, 'Estas frases son las que más te van a mejorar la canción. Corrige cada una (ejercicio con tu misma frase) y después vuelve a cantar la canción completa para comparar.'),
+      ...rep.plan.map((l, k) => h('button', { class: 'btn line', onclick: () => nav(`#frase-${id}-${l.i}${l.probs[0] ? '-' + l.probs[0].key : ''}`) }, h('span', { class: 'pill' }, String(k + 1)), h('span', {}, lines[l.i].text, h('small', { class: 'muted', html: l.probs[0] ? ' · ' + l.probs[0].text.replace(/<[^>]+>/g, '') : '' }))))) : null,
+    problemLines.length ? h('div', {}, h('h3', { class: 'k-h' }, 'Frase por frase'), ...problemLines.map(lineCard)) : null);
 }
 
 // ---------- Karaoke (escuchar / con guía / solo / libre / fiesta) ----------
@@ -266,6 +309,8 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
   let loop = null, micOk = false, scoreOn = scored;
   let rec = null, recChunks = [], recStartPos = 0, lastTake = null;
   const state = { shift: 0 };
+  // el profe graba cada toma (solo en tu celular) para poder comparar frase por frase: original vs tú
+  let auto = null, autoTake = null; const allF = [];
 
   const startPlay = async (pos) => {
     stopSpeaking();
@@ -282,8 +327,11 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
       coachBox.replaceChildren(say(line('can_sin_audif') + ' <small>Baja la voz guía a 0% para que te evalúe.</small>', 'atento', { compact: true, voice: 'can_sin_audif', tone: 'warn' }));
     } else if (micOk) scoreOn = scored;
     resetSmoother();
-    if (pos <= 0.5) for (const x of targets) { x.frames = []; x.result = null; }
+    if (pos <= 0.5) { for (const x of targets) { x.frames = []; x.result = null; } allF.length = 0; }
     roll && roll.clearUser();
+    if (scoreOn && micOk && window.MediaRecorder && !(rec && rec.state === 'recording')) {
+      try { const ch = []; auto = new MediaRecorder(micStream()); auto.ondataavailable = (e) => e.data.size && ch.push(e.data); const p0 = pos; auto.onstop = () => { autoTake = { blob: new Blob(ch, { type: auto.mimeType }), pos: p0, buf: null }; }; auto.start(); } catch (e) { auto = null; }
+    }
     player.start(pos);
     playBtn.replaceChildren(icon('pause', 34));
     result.replaceChildren();
@@ -292,6 +340,7 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
     player.stop();
     playBtn.replaceChildren(icon('play', 34));
     if (rec && rec.state === 'recording') rec.stop();
+    if (auto && auto.state === 'recording') auto.stop();
     if (listen && ended) saveProgress(id, (p) => (p.escuchar = true)).then(() => { sfx('done'); result.replaceChildren(say('¡Listo! Ahora pasemos a línea por línea.', 'celebra'), h('button', { class: 'btn primary big', onclick: () => nav('#lineas-' + id) }, 'Paso 2: línea por línea')); });
     if (scoreOn && micOk) showResult(ended);
   };
@@ -333,29 +382,46 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
     };
     result.prepend(h('div', { class: 'k-card' }, say('Escucharte es de lo más útil: vas a notar cosas que mientras cantas no notas.', 'feliz', { compact: true }), both));
   };
-  const showResult = (ended) => {
+  const showResult = async (ended) => {
     const done = targets.filter((x) => x.frames.length);
     done.forEach((x) => { if (!x.result) x.result = scoreNote(x) ? 'hit' : 'miss'; });
     if (done.length < 5) return;
-    const hits = done.filter((x) => x.result === 'hit').length;
-    const score = hits / done.length;
-    const cents = done.flatMap((x) => x.frames.filter((f) => f.cents != null && Math.abs(f.cents) < 100).map((f) => Math.abs(f.cents)));
-    const avgC = cents.length ? cents.reduce((p, q) => p + q, 0) / cents.length : null;
-    const issues = diagnoseSeq(done, [], { tol: Number(tolSel.value) });
-    const lineScores = lines.map((ln, i) => { const ns = done.filter((x) => x.t0 >= ln.t0 - 0.1 && x.t0 < ln.t1); return { i, n: ns.length, r: ns.length ? ns.filter((x) => x.result === 'hit').length / ns.length : null }; })
-      .filter((x) => x.n >= 2 && x.r != null).sort((p, q) => p.r - q.r).slice(0, 3);
+    await sleep(80); // deja cerrar la grabación
+    const rep = songReport({ targets, lines, all: allF, tol: Number(tolSel.value) });
+    window.__syngReport = { rep, targets };
+    const score = rep.score;
+    const sung = done.flatMap((x) => x.frames.filter((f) => f.cents != null && Math.abs(f.cents) < 100).map((f) => Math.abs(f.cents)));
+    const avgC = sung.length ? sung.reduce((p, q) => p + q, 0) / sung.length : null;
+    observe(songObs(rep, done, Date.now()));
     addXp(Math.round(5 + score * 15));
-    record({ type: 'song', pitch: score, cents: avgC, issues: issues.slice(0, 2).map((x) => x.key) });
+    record({ type: 'song', pitch: score, cents: avgC, issues: rep.global.filter((g) => g.tone !== 'ok').slice(0, 2).map((g) => g.key) });
+    const prev = (s.progress && s.progress.report) || null;
+    const full = done.length >= targets.length * 0.6;
+    if (full) await saveProgress(id, (p) => (p.report = { at: Date.now(), score, lines: Object.fromEntries(rep.lines.map((l) => [l.i, l.score])), global: rep.global.map((g) => g.title) }));
     if (ended && (mode === 'guia' || mode === 'solo')) saveProgress(id, (p) => (p[mode] = Math.max(p[mode] || 0, score)));
     if (ended && mode === 'solo' && score >= 0.7) { sfx('done'); confetti(); }
-    const v = verdict(score);
-    const top = issues[0];
-    result.replaceChildren(h('div', { class: 'k-card' },
-      h('div', { class: 'sheet-head' }, scoreRing(score, 72), h('div', {}, h('h2', {}, v.title), h('p', { class: 'small' }, `${hits} de ${done.length} notas afinadas` + (avgC != null ? ` · ${Math.round(avgC)} cents de desviación al llegar` : '')))),
-      top ? say(`${top.text}<br><span class="tip">${top.tip}</span>`, v.mood, { voice: [v.voice, top.voice] }) : say(score >= 0.7 ? 'Muy bien. Prueba bajar la voz guía o subir la exigencia.' : 'Practica línea por línea las partes difíciles.', v.mood, { voice: v.voice }),
-      lineScores.length ? h('div', {}, h('b', {}, 'Las líneas que más te costaron:'),
-        ...lineScores.map((x) => h('button', { class: 'btn line', onclick: () => setLoop(x.i) }, h('span', { class: 'pill' }, pct(x.r)), lines[x.i].text))) : null));
+    result.replaceChildren(reportView(rep, prev, { id, nav, lines, setLoop, compare: autoTake ? (i, btn) => compareLine(i, btn) : null, avgC }));
     result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
+  // Escuchar una frase: primero la original, después tu toma (con la pista)
+  let cmpBusy = null;
+  const compareLine = async (i, btn) => {
+    if (cmpBusy) { cmpBusy(); return; }
+    const ln = lines[i]; const t0 = Math.max(0, ln.t0 - 0.4), dur = ln.t1 - t0 + 0.6;
+    if (!autoTake.buf) { try { autoTake.buf = await decodeFile(autoTake.blob); } catch (e) { btn.textContent = 'No pude abrir tu grabación'; return; } }
+    const c = getCtx(); let stopped = false; const players = [];
+    cmpBusy = () => { stopped = true; players.forEach((p) => { try { p.stop(); } catch (e) {} }); cmpBusy = null; btn.lastChild.textContent = 'Original vs tú'; };
+    btn.lastChild.textContent = '▶ Original…';
+    const o = new Player(bufs, a); o.setGuide(1); o.start(t0); players.push(o);
+    await sleep(dur * 1000); o.stop();
+    if (stopped) return;
+    btn.lastChild.textContent = '▶ Tú…';
+    const inst = new Player(bufs, a); inst.setGuide(0); inst.start(t0); players.push(inst);
+    const src = c.createBufferSource(); src.buffer = autoTake.buf; const g = c.createGain(); g.gain.value = 1.8; src.connect(g).connect(c.destination);
+    const off = Math.max(0, t0 - autoTake.pos + latency());
+    src.start(c.currentTime + 0.02, off, dur); players.push({ stop: () => src.stop() });
+    await sleep(dur * 1000 + 100); inst.stop();
+    if (!stopped) cmpBusy && cmpBusy();
   };
 
   let lastSeek = 0;
@@ -372,6 +438,7 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
       if (player.playing && micOk && scoreOn) {
         const p = readPitch();
         const { ok, shown } = evalFrame(targets, ut, p, Number(tolSel.value), st, state);
+        allF.push({ t: ut, m: shown });
         roll.addUser(ut, shown, ok);
         for (const x of targets) if (!x.result && x.frames.length && ut > x.t1 + 0.05) { x.result = scoreNote(x) ? 'hit' : 'miss'; }
         const dn = targets.filter((x) => x.result);
@@ -413,6 +480,7 @@ export async function linesView(root, nav, id, sig) {
   try { await startMic(); micOk = true; } catch (e) {}
   coachBox.replaceChildren(say(line('can_lineas'), 'feliz', { compact: true, voice: 'can_lineas' }));
   const span = (k) => ({ t0: Math.max(0, lines[k].t0 - 1.5), t1: lines[k].t1 + 0.6 });
+  let lastAll = [];
   const playSpan = async (k, guideV, scoring) => {
     const { t0, t1 } = span(k);
     const targets = a.notes.filter((n) => n.t0 >= lines[k].t0 - 0.15 && n.t0 < lines[k].t1).map((n) => ({ t0: n.t0, t1: n.t1, m0: n.m, m1: n.m, frames: [] }));
@@ -420,7 +488,7 @@ export async function linesView(root, nav, id, sig) {
     if (!scoring) roll.targets.forEach((x) => (x.result = 'demo'));
     roll.clearUser(); resetSmoother();
     player.setGuide(guideV); player.start(t0);
-    const state = { shift: 0 };
+    const state = { shift: 0 }; lastAll = [];
     while (!sig.aborted && player.playing) {
       const t = player.time();
       if (t >= t1) break;
@@ -429,6 +497,7 @@ export async function linesView(root, nav, id, sig) {
       if (scoring && micOk) {
         const p = readPitch();
         const { ok, shown } = evalFrame(targets, ut, p, Number(st.songTol) || 70, st, state);
+        lastAll.push({ t: ut, m: shown });
         roll.addUser(ut, shown, ok);
         for (const x of targets) if (!x.result && x.frames.length && ut > x.t1 + 0.05) x.result = scoreNote(x) ? 'hit' : 'miss';
       }
@@ -469,14 +538,20 @@ export async function linesView(root, nav, id, sig) {
       if (all) await saveProgress(id, (p) => (p.lineasOk = true));
       const v = verdict(sc);
       sfx(sc >= 0.7 ? 'ok' : 'bad');
-      const top = diagnoseSeq(targets, [], { tol: Number(st.songTol) || 70 })[0];
-      coachBox.replaceChildren(say(`<b>${v.title}</b> ${targets.filter((x) => x.result === 'hit').length} de ${targets.length} notas afinadas.` + (top ? `<br>${top.text}<br><span class="tip">${top.tip}</span>` : ''), v.mood, { compact: true, voice: [v.voice, top && top.voice].filter(Boolean) }));
+      // el profe revisa la frase: final, entrada, nota alta, palabra difícil…
+      const rp = targets.length >= 2 ? songReport({ targets, lines, all: lastAll, tol: Number(st.songTol) || 70 }) : null;
+      if (rp) observe(songObs(rp, targets, Date.now()));
+      const pr = rp && rp.lines.find((l) => l.i === i);
+      const top = pr && pr.probs[0] ? pr.probs[0] : diagnoseSeq(targets, [], { tol: Number(st.songTol) || 70 })[0];
+      coachBox.replaceChildren(say(`<b>${v.title}</b> ${targets.filter((x) => x.result === 'hit').length} de ${targets.length} notas afinadas.` + (top ? `<br>${top.text}<br><span class="tip">👉 ${top.tip}</span>` : ''), v.mood, { compact: true, voice: [v.voice, top && top.voice].filter(Boolean) }));
+      if (pr && pr.words.length) coachBox.append(h('p', { class: 'phrase-words' }, ...pr.words.map((w) => h('span', { class: 'pw ' + (w.s || 'na') }, w.w + ' '))));
       addXp(sc >= 0.7 ? 3 : 1);
       drawChips();
       const last = i === lines.length - 1;
       actions.replaceChildren(
         h('button', { class: 'btn ' + (sc >= 0.7 ? '' : 'primary'), onclick: () => stage('sing') }, icon('repeat', 16), 'Otra vez'),
         h('button', { class: 'btn ghost', onclick: () => stage('listen') }, 'Escuchar'),
+        sc < 0.8 ? h('button', { class: 'btn', onclick: () => nav(`#frase-${id}-${i}${top && top.key ? '-' + top.key : ''}`) }, icon('target', 16), 'Corregir') : null,
         sc >= 0.7 || true ? h('button', { class: 'btn ' + (sc >= 0.7 ? 'primary' : ''), onclick: () => { if (last) { if (all) { sfx('done'); confetti(); } nav('#cancion-' + id); } else { i++; stage('listen'); } } }, last ? 'Terminar' : 'Siguiente línea') : null);
     }
   };

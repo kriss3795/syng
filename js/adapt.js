@@ -50,7 +50,9 @@ export function analyze() {
 
   // 2) por registro: agudos vs graves de tu rango
   const span = Math.max(4, R.high - R.low);
-  const hi = notes.filter((o) => (o.m - R.low) / span >= 0.66), lo = notes.filter((o) => (o.m - R.low) / span <= 0.33), mid = notes.filter((o) => { const r = (o.m - R.low) / span; return r > 0.33 && r < 0.66; });
+  // (las canciones se excluyen: se pueden cantar una octava abajo y su nota escrita no dice dónde cantaste)
+  const reg = notes.filter((o) => o.k !== 'song');
+  const hi = reg.filter((o) => (o.m - R.low) / span >= 0.66), lo = reg.filter((o) => (o.m - R.low) / span <= 0.33), mid = reg.filter((o) => { const r = (o.m - R.low) / span; return r > 0.33 && r < 0.66; });
   if (hi.length >= 15 && mid.length >= 10) {
     const mh = mean(hi.map((o) => o.c)), mm = mean(mid.map((o) => o.c));
     const ah = acc(hi), am = acc(mid);
@@ -193,7 +195,7 @@ export function adaptExercises(exs, A, { remedial = false } = {}) {
     const e = { ...ex };
     if (e.tol && A.tolF !== 1) e.tol = Math.max(25, Math.min(180, Math.round(e.tol * A.tolF)));
     if (e.bpm && A.bpmF !== 1) e.bpm = Math.round(e.bpm * A.bpmF);
-    if (A.keyShift && !e.drone && !e.atHome && !e.home) {
+    if (A.keyShift && !e.drone && !e.atHome && !e.home && !e.fixed) {
       if (e.type === 'seq' && e.base != null) e.base = clampBase(e, e.base + A.keyShift, R);
       if ((e.type === 'match' || e.type === 'sustain' || e.type === 'dynamics') && e.notes && !e.wide) e.notes = e.notes.map((n) => Math.max(R.low, Math.min(R.high, n + A.keyShift)));
     }

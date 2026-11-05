@@ -376,3 +376,23 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .tess-bar.miss { background: repeating-linear-gradient(45deg, var(--line), var(--line) 3px, transparent 3px, transparent 6px); }
 .ok-card { border-color: #BFEBD3; background: var(--ok-l); }
 .card.discovery { border-color: var(--primary); background: var(--primary-l); text-align: left; } .card.discovery p { margin: 4px 0; }
+
+/* Informe del profe (canciones) */
+.report h3, .report .k-h { color: #fff; margin: 4px 0 8px; }
+.k-h { padding: 0 4px; }
+.k-card p { margin: 6px 0; }
+.k-card .tip { color: #CFC6F2; }
+.stage-dark .diag-item { background: #2B2056; border-color: #3A2E6E; color: #F2EEFF; }
+.stage-dark .diag-item .tip { color: #CFC6F2; }
+.stage-dark .diag-item.ok { border-color: #1F7A4D; } .stage-dark .diag-item.warn { border-color: #9A6A12; }
+.phrase-words { font-size: 18px; line-height: 1.6; font-weight: 700; margin: 6px 0; }
+.pw { border-radius: 6px; padding: 0 2px; }
+.pw.ok { color: #6EF0A6; } .pw.meh { color: #FFD15C; } .pw.bad { color: #FF8AA1; text-decoration: underline wavy; } .pw.na { color: #9C93C7; }
+.page .pw.ok, .ex .pw.ok { color: var(--ok-d); } .page .pw.meh, .ex .pw.meh { color: var(--warn-d); } .page .pw.bad, .ex .pw.bad { color: var(--bad-d); } .page .pw.na, .ex .pw.na { color: var(--muted); }
+.stage-dark .pw.ok { color: #6EF0A6; } .stage-dark .pw.meh { color: #FFD15C; } .stage-dark .pw.bad { color: #FF8AA1; } .stage-dark .pw.na { color: #9C93C7; }
+.prob { border-left: 3px solid #FFB547; padding-left: 10px; margin: 8px 0; }
+.row.wrap { flex-wrap: wrap; gap: 8px; }
+.btn.small { min-height: 38px; padding: 6px 12px; font-size: 14px; }
+.pill.meh { background: var(--warn-l); color: var(--warn-d); } .pill.bad { background: var(--bad-l); color: var(--bad-d); }
+.stage-dark .pill.ok { background: #1F7A4D; color: #DDF8EA; } .stage-dark .pill.meh { background: #8A5E0F; color: #FFF3D9; } .stage-dark .pill.bad { background: #8E2A40; color: #FFE4EA; }
+.stage-dark .btn.line { background: #2B2056; color: #F2EEFF; border-color: #3A2E6E; }

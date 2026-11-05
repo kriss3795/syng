@@ -1,6 +1,7 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
 import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES } from './curriculum.js';
 import { run, diagFindings, identityView } from './exercises.js';
+import { phraseExercises } from './songcoach.js';
 import { analyze, adaptExercises, warmExtras, remedialFor, liveAdjust, newFindings, obsCount } from './adapt.js';
 import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS, voiceProfile, homeNote, diagnoses, identities } from './store.js';
 import { getCtx, startMic, stopMic, readPitch, resetSmoother, playNote, startDrone, Metronome, measureLatency } from './audio.js';
@@ -29,7 +30,7 @@ function renderHeader() {
     h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)));
 }
 
-const FOCUS = /^(leccion|hoy|calentamiento|extra|rango|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -41,7 +42,7 @@ async function route() {
   renderHeader();
   const hsh = (location.hash || '#aprender').slice(1);
   document.body.classList.toggle('focus', FOCUS.test(hsh));
-  const tab = /^(cancion|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-|editarletra-)/.test(hsh) ? 'cancion'
+  const tab = /^(cancion|frase-|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-|editarletra-)/.test(hsh) ? 'cancion'
     : /^(practicar|afinador|teclado|metronomo|extra-|calentamiento|rango)/.test(hsh) ? 'practicar'
     : hsh === 'perfil' ? 'perfil' : 'aprender';
   document.querySelectorAll('nav a').forEach((a) => a.classList.toggle('on', a.dataset.tab === tab));
@@ -64,6 +65,7 @@ async function route() {
     if (hsh === 'canciones') return songsView(view, nav);
     if (hsh === 'cancion-nueva') return newSongView(view, nav);
     if (hsh.startsWith('cancion-')) return songDetail(view, nav, hsh.slice(8));
+    if (hsh.startsWith('frase-')) return phraseSession(hsh.slice(6));
     if (hsh.startsWith('escuchar-')) return practiceView(view, nav, hsh.slice(9), sig, 'escuchar');
     if (hsh.startsWith('lineas-')) return linesView(view, nav, hsh.slice(7), sig);
     if (hsh.startsWith('guia-')) return practiceView(view, nav, hsh.slice(5), sig, 'guia');
@@ -181,7 +183,7 @@ function reviewExercises() {
     if (!picked.includes(l)) picked.push(l);
   }
   return picked.flatMap((l) => {
-    const exs = applyLevel(l.build(), 2).filter((e) => !['info', 'range', 'breath', 'speak', 'diag'].includes(e.type));
+    const exs = applyLevel(l.build(), 2).filter((e) => !['info', 'range', 'breath', 'speak', 'diag', 'identity', 'self'].includes(e.type));
     return exs.length ? [exs[Math.floor(Math.random() * exs.length)]] : [];
   });
 }
@@ -228,7 +230,19 @@ function levelPicker(l, maxLevel, onPick) {
 }
 
 // ---------- Sesión de ejercicios (lección, calentamiento o práctica) ----------
-async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_PASS, next, intro, introVoice, adaptNote }) {
+// Corregir una frase de tu canción: ejercicio específico para el error + la frase lenta, con letra y a velocidad real
+async function phraseSession(arg) {
+  const [sidS, iS, ...k] = arg.split('-');
+  const song = await getSong(sidS);
+  const i = Number(iS);
+  if (!song || !song.analysis || !song.analysis.lines[i]) return nav('#canciones');
+  const exs = phraseExercises(song, i, getRange(), k.join('-') || null);
+  if (!exs.length) return nav('#cancion-' + sidS);
+  return session({ title: `${song.title} · frase ${i + 1}`, color: 'pink', exercises: exs, id: 'frase', back: '#practicar-' + sidS,
+    adaptNote: `<b>Vamos a corregir la frase ${i + 1}:</b> "${song.analysis.lines[i].text}".<br>Primero el error puntual, después la frase lenta con "la", con letra, y a velocidad real. Al final vuelve a cantar la canción para comparar.` });
+}
+
+async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_PASS, next, intro, introVoice, adaptNote, back }) {
   const mySig = sig;
   // el profe adaptativo: lo que ya aprendió de ti ajusta tono, zona y velocidad de esta sesión
   const before = analyze();
@@ -239,7 +253,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
   const stage = h('div', { class: 'stage' });
   view.replaceChildren(h('div', { class: 'session ' + (color || '') },
     h('div', { class: 'ses-top' },
-      h('button', { class: 'iconbtn', onclick: () => nav(lesson ? '#aprender' : '#practicar'), 'aria-label': 'Salir' }, icon('close')),
+      h('button', { class: 'iconbtn', onclick: () => nav(back || (lesson ? '#aprender' : '#practicar')), 'aria-label': 'Salir' }, icon('close')),
       h('div', { class: 'progress big' }, fill),
       h('button', { class: 'iconbtn', 'aria-label': 'Voz del Chincol', onclick: (e) => { const v = settings().voice === false; setSetting('voice', v); stopSpeaking(); e.currentTarget.classList.toggle('off', !v); } , class: 'iconbtn' + (settings().voice === false ? ' off' : '') }, icon('speaker'))),
     stage));
@@ -316,7 +330,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
     h('div', { class: 'actionbar' },
       h('button', { class: 'btn', onclick: () => route() }, icon('repeat', 18), 'Repetir'),
       moreLevels ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + id); } }, `Nivel ${level + 1}`)
-      : passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(lesson ? '#aprender' : '#practicar') }, 'Continuar'))));
+      : passed && next ? h('button', { class: 'btn primary', onclick: () => { stopSpeaking(); nav('#leccion-' + next.id); } }, 'Siguiente lección') : h('button', { class: 'btn primary', onclick: () => nav(back || (lesson ? '#aprender' : '#practicar')) }, back ? 'Volver a cantar la canción' : 'Continuar'))));
   if (passed && !hadStreak) setTimeout(() => sfx('streak'), 900);
 }
 
