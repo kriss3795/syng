@@ -4,9 +4,10 @@ import crypto from 'node:crypto';
 let sqlFn = null;
 export async function db() {
   if (sqlFn) return sqlFn;
-  if (!process.env.DATABASE_URL) throw Object.assign(new Error('Falta DATABASE_URL (conecta Neon al proyecto en Vercel)'), { status: 500 });
+  const url = process.env.DATABASE_URL || process.env.STORAGE_URL || process.env.POSTGRES_URL;
+  if (!url) throw Object.assign(new Error('Falta DATABASE_URL (conecta Neon al proyecto en Vercel)'), { status: 500 });
   const { neon } = await import('@neondatabase/serverless');
-  sqlFn = neon(process.env.DATABASE_URL);
+  sqlFn = neon(url);
   await sqlFn`CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, email TEXT UNIQUE NOT NULL, pass TEXT NOT NULL, created BIGINT NOT NULL)`;
   await sqlFn`CREATE TABLE IF NOT EXISTS progress (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, data JSONB NOT NULL, updated BIGINT NOT NULL)`;
   return sqlFn;
