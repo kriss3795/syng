@@ -236,5 +236,15 @@
 "i_ene1": "e7c911e3b9",
 "i_ene2": "297daa8214",
 "i_ene3": "16668eff0f",
-"i_ene4": "e369a7cf8e"
+"i_ene4": "e369a7cf8e",
+"tec_intima": "8f41e9d0dc",
+"tec_melisma": "f81c467139",
+"tec_portamento": "a17dbf290e",
+"tec_flip": "6a3c0473a1",
+"tec_belt": "13f07d7490",
+"i_res1": "800a9e77ee",
+"i_res2": "5fdd0365e6",
+"i_res3": "b44e618391",
+"i_res4": "8245982fce",
+"i_res5": "ffcd066a1f"
 }

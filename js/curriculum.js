@@ -586,6 +586,35 @@ export const UNITS = [
       seq(GRACIA, { mode: 'echo', bpm: 84, tol: 50, ttol: 170, labels: 'la', feedback: 'after' }),
     ] },
   ] },
+  { id: 'res', title: 'Tus recursos vocales', desc: 'Técnicas para cantar de verdad: voz íntima, adornos, deslizar, quiebre a falsete y voz llena arriba', color: 'green', lessons: [
+    { id: 'res1', title: 'Voz íntima', build: () => [
+      tec('tec_intima', 'Aire a propósito'),
+      { type: 'sustain', home: [0, 2], secs: 4, tol: 100, text: 'Canta <b>casi susurrando, pero con nota</b>: el aire se escucha a propósito y la nota no se mueve. Así se cantan los versos suaves.' },
+      { type: 'self', rounds: 2, tol: 110, text: 'Grábate cantando íntimo y escúchate: ¿se entiende la nota aunque haya aire?' },
+    ] },
+    { id: 'res2', title: 'Adornos y melismas', build: () => [
+      tec('tec_melisma', 'Adornos'),
+      seq([...P([4, 5, 4, 2], 0.25), { s: 4, d: 1 }, ...P([2, 4, 2, 0], 0.25), { s: 2, d: 1 }], { mode: 'echo', atHome: true, bpm: 70, tol: 100, ttol: 200, labels: 'a', reps: [0, 0, 0], text: 'Un <b>adorno</b> (vuelta) lento: arriba-abajo alrededor de la nota y aterriza. Liviano, cada nota se toca.' }),
+      seq([...P([7, 4, 2, 0], 0.5), { s: 0, d: 2 }], { mode: 'echo', atHome: true, bpm: 76, tol: 100, ttol: 200, labels: 'yeah', reps: [0, 0], text: 'Un <b>riff pop</b> bajando, "yeah-eh-eh-eh". Primero lento; la velocidad viene sola.' }),
+    ] },
+    { id: 'res3', title: 'Deslizar con estilo', build: () => [
+      tec('tec_portamento', 'Portamento'),
+      seq([{ s: 0, d: 1 }, { s: 0, g: 4, d: 0.5 }, { s: 4, d: 1.5 }, { s: 4, g: 7, d: 0.5 }, { s: 7, d: 1.5 }, { s: 7, g: 0, d: 1 }, { s: 0, d: 2 }], { mode: 'echo', atHome: true, bpm: 70, tol: 110, noTiming: true, labels: 'none', reps: [0, 0], text: '<b>Desliza a propósito</b> entre notas, como en el bolero o el soul, y llega justo al centro de la nota de destino.' }),
+    ] },
+    { id: 'res4', title: 'Quiebre a falsete', build: () => [
+      tec('tec_flip', 'El quiebre como recurso'),
+      seq([{ s: 0, d: 1.5 }, { s: 7, d: 1.5 }, { s: 12, d: 2 }, { s: 7, d: 1 }, { s: 0, d: 2 }], { mode: 'echo', bpm: 70, tol: 110, noTiming: true, labels: 'u', wide: true, reps: [0, 0], text: 'Sube y en la nota alta <b>pasa a falsete liviano a propósito</b> (como en el folk o el pop suave). Que el cambio sea un color, no un accidente.' }),
+    ] },
+    { id: 'res5', title: 'Voz llena arriba', build: () => [
+      tec('tec_belt', 'Voz llena sin gritar'),
+      { type: 'energy', home: [4, 5, 7], syl: 'hey', goal: 1.3, secs: 3, tol: 100, cue: '<b>"¡Hey!"</b> lleno y brillante en tu zona alta: twang, boca abierta, cuello suelto. Si raspa o duele, para.' },
+    ] },
+    { id: 'resx', title: 'Prueba: tus recursos', check: true, build: () => [
+      checkInfo(),
+      seq([...P([4, 5, 4, 2], 0.25), { s: 4, d: 1 }, { s: 4, g: 7, d: 0.5 }, { s: 7, d: 1.5 }], { mode: 'echo', atHome: true, bpm: 76, tol: 90, labels: 'a' }),
+      { type: 'energy', home: [5], syl: 'hey', goal: 1.2, secs: 3 },
+    ] },
+  ] },
   { id: 'u10', title: 'Maestría', desc: 'Afinado, a tiempo y sin ayuda', color: 'blue', lessons: [
     { id: 'u10l1', title: 'Precisión ±10 cents', build: () => [match([0, 2, 4, 7, 9, 12], { tol: 20, hold: 2 }), drone([7, 4, 12], { tol: 20, hold: 2 })] },
     { id: 'u10l2', title: 'Timing ±70 ms', build: () => [rhythm([0.5, 0.5, 1, -0.5, 0.5, 1], { bpm: 100, reps: 3, ttol: 70 }), seq([{ s: 0, d: 0.5 }, { s: 2, d: 0.5 }, { s: 4, d: 1 }, { s: null, d: 0.5 }, { s: 4, d: 0.5 }, { s: 7, d: 1 }, { s: 5, d: 1 }, { s: 4, d: 1 }], { mode: 'echo', bpm: 95, tol: 40, ttol: 90, reps: [0, 2] })] },
@@ -608,7 +637,7 @@ export const STAGES = [
     why: 'Con la voz encaminada, la música en el orden del método de Vaccai (1832), que todavía se usa en conservatorios: escala y terceras, cuartas y quintas, sextas, octavas, semitonos y síncopa. Después la afinación fina y leer cantando.' },
   { n: 4, title: 'Control y extensión', sub: 'Registros, agudos, agilidad y dinámica', color: 'orange', units: ['u7', 'u9', 'din'], voice: 'st_4',
     why: 'Con una base firme, se extiende la voz: unir los registros, ampliar el rango, la agilidad y la dinámica (messa di voce). Miller los trata después de la emisión porque dependen de ella.' },
-  { n: 5, title: 'Interpretación', sub: 'Canciones, dos voces, estilo y maestría', color: 'green', units: ['u8', 'arm', 'est', 'u10'], voice: 'st_5',
+  { n: 5, title: 'Interpretación', sub: 'Canciones, dos voces, estilo, tus recursos y maestría', color: 'green', units: ['u8', 'arm', 'est', 'res', 'u10'], voice: 'st_5',
     why: 'Al final se junta todo para interpretar: canciones completas, cantar con otra voz, frases largas, vibrato natural y resistencia.' },
 ];
 {
@@ -660,6 +689,7 @@ export function extraSession(kind) {
   if (kind === 'melodia') return [seq(P(randomMelody(4)), { mode: 'echo', bpm: 80, tol: 60, labels: 'la' }), seq(P(randomMelody(5)), { mode: 'echo', bpm: 85, tol: 60, labels: 'la' }), seq(P(randomMelody(6)), { mode: 'echo', bpm: 85, tol: 60, labels: 'la', feedback: 'after' })];
   if (kind === 'aire') return [breath(4, 12, 2), sustain([0, 2, 4, 5], { secs: 6, tol: 60 })];
   if (kind === 'lectura') return [read(readMelody(6), { bpm: 76, tol: 80 }), read(readMelody(7, true), { bpm: 80, tol: 70 }), read(readMelody(8, true), { bpm: 80, tol: 70, feedback: 'after' })];
+  if (kind === 'ganas') return [{ type: 'energy', home: [0], syl: '¡hey!', goal: 1.0, secs: 3 }, { type: 'energy', home: [0, 3], syl: 'nyeh', goal: 1.2, secs: 3 }, seq(ODA.slice(0, 8), { mode: 'echo', bpm: 92, tol: 80, labels: 'la', energy: true })];
   if (kind === 'dinamica') return [dyn([0, 4], 'cresc', { secs: 6, tol: 60 }), dyn([2, 7], 'swell', { secs: 8, tol: 60 })];
   if (kind === 'canciones') { const pool = [ESTRELLITA, MARTINILLO, ODA, CUNA, NOCHE, GRACIA, MARY]; const pick = pool.sort(() => Math.random() - 0.5).slice(0, 2); return pick.map((m) => seq(m, { mode: 'echo', bpm: 90, tol: 60, ttol: 180, labels: 'la' })); }
   return [match([], { wide: true, count: 8, tol: 50, hold: 1.2 })];
@@ -711,3 +741,51 @@ export function applyLevel(exs, level, keepInfo = false) {
   }
   return out;
 }
+
+// ---------- Tu rutina diaria, hecha para TU voz ----------
+// Se arma con tu mapa de voz y lo que el profe aprendió de ti: calentamiento a tu medida → foco técnico del día
+// (rota entre tus puntos débiles) → recurso del día → aplicación en una canción.
+export function dailyRoutine({ map, findings = [], phrase = null }) {
+  const d = new Date(); const seed = d.getFullYear() * 400 + d.getMonth() * 31 + d.getDate();
+  const R = getRange();
+  const out = []; const why = [];
+  const w = warmup(true);
+  out.push(w[0], w[1]);
+  why.push('Calentamiento: aire y labios');
+  const pas = map && map.siren && map.siren.passage;
+  if (pas != null) {
+    const base = Math.max(R.low, pas - 5);
+    out.push(seq([glide(0, 8, 3), glide(8, 0, 3)], { mode: 'along', bpm: 66, tol: 160, noTiming: true, labels: 'none', reps: [0, 0, 1], base, text: `Sirenas livianas con <b>"ng"</b> cruzando <b>tu pasaje (cerca de ${pas})</b>. Que el cambio no se note.`.replace(String(pas), noteNameOf(pas)) }));
+    why.push('Cruzar tu pasaje');
+  }
+  // focos: lo que tu mapa y tus notas dicen que más necesitas
+  const foci = [];
+  if (map && map.onset && map.onset.kind !== 'equilibrado') foci.push('ataque');
+  if (map && map.air && map.air.mpt != null && map.air.mpt < 12) foci.push('aire');
+  if (findings.some((f) => /bajo|alto|agudos|saltos|scoop|desde abajo/i.test(f.key + f.title))) foci.push('afinacion');
+  if (findings.some((f) => /timido|apagado/.test(f.key)) || (map && map.dyn && map.dyn.some((x) => x.range != null && x.range < 12))) foci.push('energia');
+  if (findings.some((f) => /cae|tiembla|aire/.test(f.key))) foci.push('apoyo');
+  const pool = foci.length ? foci : ['afinacion', 'energia', 'apoyo', 'ataque'];
+  const focus = pool[seed % pool.length];
+  const FOCUS = {
+    ataque: [seq([{ s: 0, d: 1 }, { s: null, d: 1 }, { s: 4, d: 1 }, { s: null, d: 1 }, { s: 7, d: 1 }, { s: null, d: 1 }, { s: 4, d: 2 }], { mode: 'echo', atHome: true, bpm: 80, tol: 90, ttol: 160, labels: 'a', reps: [0, 0], text: '<b>Foco de hoy: el ataque.</b> Cada "a" empieza limpia: ni golpe ni aire antes.' }), 'Ataque limpio'],
+    aire: [sustain([0, 2], { secs: 8, tol: 80, text: '<b>Foco de hoy: el aire.</b> Notas largas de 8 segundos, parejas hasta el final.' }), 'Aire largo y parejo'],
+    afinacion: [match([0, 4, 2, 5], { tol: 70, hold: 1.2, delay: 1, text: '<b>Foco de hoy: afinar.</b> Escucha, imagina la nota y entra directo al centro.' }), 'Afinar al centro'],
+    energia: [{ type: 'energy', home: [0, 3], goal: 1.2, secs: 3, syl: 'hey', text: '<b>Foco de hoy: cantar con ganas.</b> Pasa la rayita de tu voz hablada, sin gritar.' }, 'Cantar con ganas'],
+    apoyo: [dyn([0, 4], 'swell', { secs: 7, tol: 70, text: '<b>Foco de hoy: el apoyo.</b> Crece y vuelve a lo suave sin que la nota se mueva ni se caiga.' }), 'Apoyo y control'],
+  };
+  out.push(FOCUS[focus][0]); why.push(FOCUS[focus][1]);
+  // recurso del día
+  const RES = [
+    [seq([...P([4, 5, 4, 2], 0.25), { s: 4, d: 1 }], { mode: 'echo', atHome: true, bpm: 72, tol: 100, labels: 'a', reps: [0, 0], text: '<b>Recurso del día: un adorno.</b> Liviano y preciso.' }), 'Adorno'],
+    [seq([{ s: 0, d: 1 }, { s: 0, g: 4, d: 0.5 }, { s: 4, d: 1.5 }], { mode: 'echo', atHome: true, bpm: 70, tol: 110, noTiming: true, labels: 'none', reps: [0, 0], text: '<b>Recurso del día: deslizar</b> a propósito y llegar al centro.' }), 'Deslizar'],
+    [{ type: 'sustain', home: [0], secs: 4, tol: 100, text: '<b>Recurso del día: voz íntima.</b> Casi susurro, pero con nota.' }, 'Voz íntima'],
+    [{ type: 'energy', home: [4], goal: 1.3, secs: 3, syl: 'hey', text: '<b>Recurso del día: voz llena arriba</b>, con twang y cuello suelto.' }, 'Voz llena'],
+  ];
+  const r = RES[(seed + 1) % RES.length]; out.push(r[0]); why.push(r[1]);
+  // aplicación: tu canción (la frase que más te conviene) o una melodía clásica en tu zona
+  if (phrase && phrase.length) { out.push(phrase[1] || phrase[0]); why.push('Tu canción'); }
+  else { const mel = [ESTRELLITA, ODA, CUNA, GRACIA][seed % 4]; out.push(seq(mel, { mode: 'echo', bpm: 90, tol: 70, labels: 'la', energy: true, text: '<b>Aplicación:</b> una melodía completa usando lo de hoy, con ganas.' })); why.push('Melodía completa'); }
+  return { exercises: out, why, focus };
+}
+const noteNameOf = (m) => ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'][((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);

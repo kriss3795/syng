@@ -2,12 +2,14 @@
 // saca conclusiones (con la evidencia y lo que suele significar) y adapta la app: tono, dificultad,
 // ejercicios de refuerzo y consejos en vivo. Nunca afirma un patrón sin muestra suficiente.
 import { load, save, getRange, voiceProfile } from './store.js';
+import { track } from './fun.js';
 
 const MAX_OBS = 900;
 // obs: { t, sid, pos, k: 'seq'|'match'|'sus', m: nota objetivo (midi), c: desvío con signo (cents),
 //        prev?, pc? (nota anterior y su desvío), on? (entrada, ms), sd?, first? (cents al empezar), rms? }
 export function observe(list) {
   if (!list || !list.length) return;
+  list.forEach((o) => o && o.c != null && Math.abs(o.c) < 150 && track('note', { ok: Math.abs(o.c) <= 35 }));
   const s = load();
   s.obs = [...(s.obs || []), ...list.filter((o) => o && o.c != null && isFinite(o.c) && Math.abs(o.c) < 150)].slice(-MAX_OBS);
   save();

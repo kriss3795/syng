@@ -11,6 +11,7 @@ import { songReport, songObs } from './songcoach.js';
 import { shiftSong, shiftAnalysis, bestTranspose } from './shift.js';
 import { identities } from './store.js';
 import { observe } from './adapt.js';
+import { track } from './fun.js';
 
 const cache = new Map();
 const fmtTime = (s) => Math.floor(s / 60) + ':' + String(Math.floor(s % 60)).padStart(2, '0');
@@ -445,6 +446,7 @@ export async function practiceView(root, nav, id, sig, mode = 'libre') {
     record({ type: 'song', pitch: score, cents: avgC, issues: rep.global.filter((g) => g.tone !== 'ok').slice(0, 2).map((g) => g.key) });
     const prev = (s.progress && s.progress.report) || null;
     const full = done.length >= targets.length * 0.6;
+    if (full) track('song', { score });
     if (full) await saveProgress(id, (p) => (p.report = { at: Date.now(), score, lines: Object.fromEntries(rep.lines.map((l) => [l.i, l.score])), global: rep.global.map((g) => g.title) }));
     if (full && autoTake) { // guardar la toma para escuchar tu progreso en el tiempo (las últimas 5, solo en tu celular)
       const fresh = await getSong(id);

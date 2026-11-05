@@ -296,5 +296,6 @@ export function voiceMapView(m, prev, onDone) {
     plan.length ? h('div', { class: 'card ok-card' }, h('b', {}, 'Para manejar mejor tu voz, en este orden:'), ...plan.map((p, i) => h('p', { class: 'small' }, `${i + 1}. ${p}`))) : null,
     h('p', { class: 'small muted' }, 'Pruebas inspiradas en la evaluación vocal clínica (perfil de rango vocal, tiempo máximo de fonación, relación s/z, CPP) y en la clasificación de voces de la pedagogía (tesitura, timbre, pasaje, voz hablada). Con el micrófono del celular son aproximadas: repite el mapa cada mes en el mismo lugar para ver tu evolución.'),
     h('div', { class: 'grow' }),
+    h('button', { class: 'btn', onclick: () => { location.hash = '#manual'; } }, 'Ver cómo usar tu voz (tu manual)'),
     onDone ? h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: onDone }, 'Entendido')) : null);
 }

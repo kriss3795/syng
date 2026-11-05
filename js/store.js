@@ -48,7 +48,9 @@ export function addXp(n) {
   }
   s.xp += n; s.todayXp += n;
   save();
+  xpHooks.forEach((f) => { try { f(n); } catch (e) {} });
 }
+export const xpHooks = [];
 
 export function record(entry) {
   const s = load();

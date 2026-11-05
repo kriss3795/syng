@@ -7,6 +7,7 @@ import { noteName, solfege } from './pitch.js';
 import { getRange, load, save, addXp } from './store.js';
 import { say } from './coach.js';
 import { sfx, confetti, stopSpeaking } from './voice.js';
+import { track } from './fun.js';
 
 export const GAME_LEVELS = [
   { id: 'g1', name: 'Escalita', desc: 'Do, re, mi… subiendo y bajando, con ayuda', seq: [0, 2, 4, 5, 7, 5, 4, 2, 0], tol: 70, speed: 0.75, help: true },
@@ -122,6 +123,7 @@ export async function playGame(root, nav, levelId, sig) {
   const pctV = Math.round((passed / gates.length) * 100);
   const rec = pctV > best(L.id);
   setBest(L.id, pctV);
+  track('game', { passed, pct: pctV });
   addXp(Math.round(3 + pctV / 10));
   if (pctV >= 60) { sfx('done'); if (rec) confetti(); } else sfx('bad');
   const idx = GAME_LEVELS.indexOf(L);

@@ -440,7 +440,7 @@ async function runSeq(spec, root, sig) {
   const stopBtn = h('button', { class: 'btn ghost' }, 'Detener');
   let stopped = false; stopBtn.onclick = () => (stopped = true);
   const roundPill = h('span', { class: 'pill' });
-  root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
+  root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, h('div', { class: 'combo-wrap' }, comboEl), canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
   const roll = new Roll(canvas, { span: Math.max(4, Math.min(8, beat * 10)), nowFrac: 0.3 });
   roll.targets = targets.map((x) => x);
   roll.fitTargets(3);
@@ -457,7 +457,9 @@ async function runSeq(spec, root, sig) {
   const lat = latency();
   const scored = targets.filter((x) => !x.demo);
   const all = []; // todos los cuadros: {t, m (suavizado), raw}
-  const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null; let eSm = 0, lowE = 0;
+  const biasWin = []; const recentFlags = []; const tipCount = {}; let liveTip = null; let eSm = 0, lowE = 0; let combo = 0, maxCombo = 0;
+  const comboEl = h('div', { class: 'combo-pop' });
+  const comboPop = (n) => { comboEl.textContent = n >= 5 ? `🔥 ¡${n} seguidas!` : `+${n} seguidas`; comboEl.classList.remove('go'); void comboEl.offsetWidth; comboEl.classList.add('go'); };
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
@@ -483,6 +485,11 @@ async function runSeq(spec, root, sig) {
       tg._checked = true;
       if (tg.m0 !== tg.m1) continue;
       tg.flags = noteFlags(tg, spec.vibrato);
+      { // combo: notas afinadas seguidas
+        const d = tg.t1 - tg.t0; const body = tg.frames.filter((f) => f.t > tg.t0 + Math.min(0.12, d * 0.15) && f.t < tg.t1 - Math.min(0.06, d * 0.1));
+        const hit = body.length >= 3 && body.filter((f) => f.ok).length / body.length >= 0.5;
+        if (hit) { combo++; maxCombo = Math.max(maxCombo, combo); if (combo >= 2) { sfx('combo', combo); comboPop(combo); } } else combo = 0;
+      }
       recentFlags.push(tg.flags || []); if (recentFlags.length > 4) recentFlags.shift();
       for (const f of tg.flags || []) {
         const times = recentFlags.filter((x) => x.includes(f)).length;
@@ -578,7 +585,7 @@ async function runSeq(spec, root, sig) {
     score, cents, timing: tAvg != null ? tAvg * 1000 : null,
     detail: `${hits} de ${scored.length} notas afinadas` + (cents != null ? `. Cuando llegaste a la nota, te desviaste en promedio ${Math.round(cents)} cents` : '') + tmsg.replace(' · ', '. '),
     issues: [...habitIssues(scored), ...diagnoseSeq(scored, all, { timingErrs: spec.noTiming ? [] : timingErrs, tol })].filter((x, i, a) => a.findIndex((y) => y.key === x.key) === i),
-    keepView: canvas,
+    keepView: canvas, maxCombo,
   };
 }
 

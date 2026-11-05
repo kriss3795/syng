@@ -1,11 +1,12 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
-import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf } from './curriculum.js';
+import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf, dailyRoutine } from './curriculum.js';
 import { run, diagFindings, identityView, registerRunner } from './exercises.js';
 import { runVoiceMap, voiceMapView } from './voicemap.js';
 registerRunner('voicemap', runVoiceMap);
 import { runEnergy } from './energy.js';
 registerRunner('energy', runEnergy);
 import { phraseExercises } from './songcoach.js';
+import { track, checkLevel, levelOf, dailyQuests, openChest, chestState, weekDots, applyFreeze, freezes, BADGES, badges, toast } from './fun.js';
 import { gameMenu, playGame } from './game.js';
 import { analyze, adaptExercises, warmExtras, remedialFor, liveAdjust, newFindings, obsCount } from './adapt.js';
 import { load, save, settings, setSetting, addXp, record, lessonState, setLesson, getRange, resetAll, today, getSong, lessonLevel, LEVELS_TO_PASS, voiceProfile, homeNote, diagnoses, identities } from './store.js';
@@ -32,10 +33,11 @@ function renderHeader() {
   const s = load();
   hdr.replaceChildren(
     h('span', { class: 'stat-chip flame' + (s.lastDay === today() ? ' lit' : '') }, icon('flame', 18), String(s.streak || 0)),
-    h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)));
+    h('span', { class: 'stat-chip xp' }, icon('bolt', 18), String(s.xp)),
+    h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -58,6 +60,9 @@ async function route() {
     if (hsh.startsWith('leccion-')) return lessonIntro(hsh.slice(8));
     if (hsh === 'profe') return profeView();
     if (hsh === 'metodo') return methodView();
+    if (hsh === 'manual') return manualView();
+    if (hsh === 'rutina') { const rt = await routineToday(); return session({ title: 'Tu rutina de hoy', color: 'teal', exercises: rt.exercises, id: 'rutina', back: '#aprender', backLabel: 'Volver al inicio',
+      adaptNote: '<b>Tu rutina de hoy, hecha para tu voz (≈10 min):</b><br>' + rt.why.map((w, i) => `${i + 1}. ${w}`).join('<br>') + (load().voiceMaps && load().voiceMaps.length ? '' : '<br><small>Haz el mapa de tu voz para que la rutina se ajuste aún más a ti.</small>') }); }
     if (hsh === 'cantar-ya') { // calentamiento mínimo (aire + labios) y directo a cantar
       const ls = load().lastSong;
       const song = ls ? await getSong(ls) : null;
@@ -99,7 +104,7 @@ async function route() {
   }
 }
 
-const EXTRA = { oido: 'Entrenar el oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango', aire: 'Aire parejo', lectura: 'Leer y cantar', dinamica: 'Dinámica', canciones: 'Canciones clásicas' };
+const EXTRA = { oido: 'Entrenar el oído', ritmo: 'Ritmo', fina: 'Afinación fina', melodia: 'Melodías nuevas', rango: 'Todo tu rango', aire: 'Aire parejo', ganas: 'Cantar con ganas', lectura: 'Leer y cantar', dinamica: 'Dinámica', canciones: 'Canciones clásicas' };
 
 // ---------- Inicio: clase de hoy + camino ----------
 function isUnlocked(idx) {
@@ -115,7 +120,9 @@ function homeView() {
   const curStage = next ? stageOf(next.unit) : null;
   const goal = Math.min(1, (s.lastDay === today() ? s.todayXp || 0 : 0) / s.dailyGoal);
   const first = !s.xp;
-  const greeting = first ? line('hola') : s.lastDay === today() ? '¡Bien, ya practicaste hoy! Si tienes ganas, sigue con otra clase.' : `¡Hola de nuevo! ${tipOfDay()}`;
+  applyFreeze();
+  const atRisk = s.streak >= 2 && s.lastDay !== today();
+  const greeting = first ? line('hola') : s.lastDay === today() ? '¡Bien, ya practicaste hoy! Si tienes ganas, sigue con otra clase.' : atRisk ? `🔥 <b>Tu racha de ${s.streak} días está en juego.</b> Una clase corta y la salvas.` : `¡Hola de nuevo! ${tipOfDay()}`;
   const hero = h('section', { class: 'hero' },
     say(greeting, first ? 'feliz' : 'canta', { voice: first ? 'hola' : null, autoplay: false }),
     h('div', { class: 'hero-row' },
@@ -123,6 +130,7 @@ function homeView() {
       next ? h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#hoy'); } }, icon('play', 18), 'Clase de hoy') : h('b', {}, '¡Terminaste el camino! 🏆')),
     next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null,
     curStage ? h('button', { class: 'stage-chip', onclick: () => nav('#metodo') }, `Etapa ${curStage.n} de ${STAGES.length}: ${curStage.title}`) : null,
+    first ? null : h('div', { class: 'week' }, ...weekDots().map((d) => h('div', { class: 'wd' + (d.on ? ' on' : '') + (d.today ? ' today' : '') }, h('span', {}, d.on ? '🔥' : ''), h('small', {}, d.l))), freezes() ? h('div', { class: 'wd frz', title: 'Protectores de racha' }, h('span', {}, '🧊'), h('small', {}, '×' + freezes())) : null),
     h('button', { class: 'btn big sing-now', onclick: () => { sfx('select'); nav('#cantar-ya'); } }, icon('mic', 18), s.lastSong ? 'Cantar ya: tu canción' : 'Cantar ya: 3 minutos'));
   const rec = recommend(s.history || []);
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
@@ -169,7 +177,7 @@ function homeView() {
       h('div', { class: 'unit-head' }, h('div', {}, h('h2', {}, u.title), h('p', {}, u.desc))),
       h('div', { class: 'path' }, nodes));
   }
-  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
+  view.replaceChildren(h('div', { class: 'page' }, ...[installBanner(), hero, first ? null : questsCard(), first ? null : routineCard(), profeCard(), recCard, reviewCard, ...path].filter(Boolean)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
@@ -324,6 +332,8 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
       if (decision === 'next') break;
       if (decision === 'easier') { ex = makeEasier(ex); easier = true; }
     }
+    if (res.maxCombo) track('combo', { n: res.maxCombo });
+    if (!res.info && !res.skipped && !ex.noScore) track('exercise', { type: ex.type, score: res.score });
     if (!res.info && !res.skipped && !ex.noScore) {
       scores.push(res.score);
       if (res.cents != null) metrics.cents.push(res.cents);
@@ -344,6 +354,9 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
   const passed = !lesson || stars > 0;
   const xp = passed ? Math.round(10 + score * 15) : 5;
   addXp(xp);
+  const doneStages = STAGES.filter((st) => ALL_LESSONS.filter((l) => st.units.includes(l.unit.id)).every((l) => lessonState(l.id)?.done)).map((st) => st.n);
+  track('session', { lesson: !!lesson, passed, stars, warmup: exercises.some((e) => e.noScore) || id === 'warmup', stages: doneStages });
+  if (id === 'mapa' || exercises.some((e) => e.type === 'voicemap')) track('map');
   renderHeader();
   if (passed) { sfx('done'); confetti(); }
   const s = load();
@@ -414,6 +427,7 @@ function gymView() {
       tile('#calentamiento', 'sparkle', 'Calentamiento', 'Aire, lip trill y escalas · 6 min', 'orange'),
       tile('#extra-aire', 'breath', 'Aire parejo', 'Notas largas con barra de aire', 'orange'),
       tile('#extra-dinamica', 'wave', 'Dinámica', 'Crescendo y messa di voce', 'orange'),
+      tile('#extra-ganas', 'party', 'Cantar con ganas', 'Energía y proyección, sin gritar', 'orange'),
       tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal')),
     h('h2', { class: 'sec' }, 'Afinación y oído'),
     h('div', { class: 'tiles' },
@@ -513,6 +527,92 @@ function methodView() {
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver al camino'))));
 }
 
+// ---------- Tu rutina diaria y tu manual de voz ----------
+async function routineToday() {
+  const m = (load().voiceMaps || []).slice(-1)[0] || null;
+  let phrase = null;
+  const ls = load().lastSong;
+  if (ls) { const song = await getSong(ls); if (song && song.analysis && song.analysis.lines.length) {
+    const rep = song.progress && song.progress.report;
+    let i = 0; if (rep && rep.lines) { const e = Object.entries(rep.lines).sort((a, b) => a[1] - b[1])[0]; if (e) i = Number(e[0]); }
+    phrase = phraseExercises(song, i, getRange(), null).slice(-3);
+  } }
+  return dailyRoutine({ map: m, findings: analyze().findings.filter((f) => f.tone !== 'ok'), phrase });
+}
+function routineCard() {
+  const done = (load().history || []).some((x) => x.type === 'rutina' && x.day === today());
+  return h('button', { class: 'card rec routine' + (done ? ' done' : ''), onclick: () => { sfx('select'); nav('#rutina'); } }, chincol(done ? 'celebra' : 'feliz', 48),
+    h('div', {}, h('b', {}, done ? 'Rutina de hoy: ¡hecha! ✓' : 'Tu rutina de hoy · 10 min'), h('div', { class: 'small muted' }, 'Calentamiento a tu medida, tu foco técnico, un recurso y tu canción. Cambia cada día.')), icon('chevron'));
+}
+function manualView() {
+  const ms = load().voiceMaps || []; const m = ms[ms.length - 1];
+  const id = (m && m.id) || identities().slice(-1)[0];
+  const F = analyze().findings; const R = getRange();
+  const back = h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {}));
+  if (!m && !id) { view.replaceChildren(h('div', { class: 'page' }, back, h('h1', {}, 'Tu manual de voz'), say('Para escribir el manual de <b>tu</b> voz primero necesito conocerla. Haz el mapa de tu voz (unos 8 minutos) y aquí aparecerá cómo usarla.', 'piensa'), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#mapa') }, 'Hacer el mapa de mi voz')))); return; }
+  const nn = (x) => (x == null ? '—' : noteName(x));
+  const sec = (title, ...ps) => h('div', { class: 'card manual-sec' }, h('h3', {}, title), ...ps.filter(Boolean).map((p) => (typeof p === 'string' ? h('p', { class: 'small', html: p }) : p)));
+  const pas = m && m.siren && m.siren.passage;
+  const strengths = [];
+  if (m && m.onset && m.onset.kind === 'equilibrado') strengths.push('Tu ataque es equilibrado: empiezas las notas como buscan los profes.');
+  if (m && m.air && m.air.mpt >= 15) strengths.push(`Tienes buen aire (${m.air.mpt} s en una nota).`);
+  if (m && m.dyn && m.dyn.some((d) => d.range >= 15)) strengths.push('Manejas un buen rango de volumen.');
+  if (m && m.tuning && m.tuning.acc >= 70) strengths.push(`Afinas bien: ${m.tuning.acc}% de tus notas al centro.`);
+  if (id && id.texture === 'limpia') strengths.push('Tu sonido es limpio: poco ruido de aire.');
+  if (id && id.color) strengths.push(`Tu voz ${id.color} es tu sello: ${id.color === 'brillante' ? 'tu voz se escucha y corta' : id.color === 'oscura y cálida' ? 'tu voz abraza, ideal para baladas' : 'te adapta a muchos estilos'}.`);
+  F.filter((f) => f.tone === 'ok' && f.key === 'progreso').forEach((f) => strengths.push(f.title + ' ' + f.evidence));
+  const care = F.filter((f) => f.tone !== 'ok').slice(0, 4).map((f) => `<b>${f.title}.</b> ${f.meaning}`);
+  if (m && m.onset && m.onset.kind === 'duro') care.push('<b>Ataque duro.</b> Empezar con golpe de glotis cansa las cuerdas: piensa la nota como un suspiro con sonido.');
+  if (m && m.air && m.air.sz > 1.4) care.push('<b>Relación s/z alta.</b> Puede escaparse aire por las cuerdas: trabaja el ataque limpio y, si notas ronquera persistente, consulta a un fonoaudiólogo.');
+  const res = [];
+  if (id && id.color === 'oscura y cálida') res.push('🎙️ <b>Voz íntima</b> y <b>deslizar</b>: tu calidez luce en baladas, boleros y versos suaves.', '✨ Un poco de <b>twang</b> en los coros para proyectar sin perder tu calidez.');
+  if (id && id.color === 'brillante') res.push('📣 <b>Voz llena arriba</b> y <b>twang</b>: tu brillo luce en pop y rock.', '🎙️ Contrasta con <b>voz íntima</b> en los versos para que los coros exploten.');
+  if (id && id.color === 'equilibrada') res.push('🎛️ Tu voz se adapta: usa <b>voz íntima</b> en versos y <b>voz llena</b> en coros.');
+  if (id && id.texture === 'limpia') res.push('🎶 <b>Adornos y melismas</b>: con un sonido limpio se escuchan nítidos.');
+  if (id && /aire/.test(id.texture || '')) res.push('🌬️ Tu aire natural es un color íntimo; para los momentos fuertes, trabaja el ataque limpio para cerrar más la voz.');
+  if (pas != null) res.push(`🪶 <b>Quiebre a falsete</b> cerca de ${nn(pas)}: úsalo a propósito como color en las notas altas.`);
+  view.replaceChildren(h('div', { class: 'page' }, back,
+    h('h1', {}, 'Tu manual de voz'),
+    say('Esto es cómo usar <b>tu</b> voz, no una voz cualquiera: está escrito con lo que medí de ti.', 'feliz', { compact: true }),
+    sec('Tu instrumento',
+      id ? `Tu voz se parece a la de un <b>${id.type}</b>.` + (id.color ? ` Su color es <b>${id.color === 'oscura y cálida' ? 'oscuro y cálido' : id.color === 'brillante' ? 'brillante' : 'equilibrado'}</b>` + (id.texture ? ` y su textura, <b>${id.texture}</b>.` : '.') : '') : null,
+      m && m.speak != null ? `Hablas alrededor de <b>${nn(Math.round(m.speak))}</b>: tu voz cantada nace cerca de ahí.` : null,
+      id && id.sweetLo != null ? `Donde mejor suenas: <b>${nn(id.sweetLo)}–${nn(id.sweetHi)}</b>. Tu rango cómodo: ${nn(R.low)}–${nn(R.high)}.` : null),
+    sec('Cómo elegir el tono de una canción',
+      id && id.sweetLo != null ? `Que la mayor parte de la melodía viva entre <b>${nn(id.sweetLo)} y ${nn(id.sweetHi)}</b>, y que la nota más alta no pase de <b>${nn(R.high)}</b>.` : null,
+      'En tus canciones, el botón <b>"Tono para tu voz"</b> lo calcula por ti y cambia el tono sin cambiar la velocidad.'),
+    sec('Tu pasaje (cambio de registro)',
+      pas != null ? `Tu voz cambia cerca de <b>${nn(pas)}</b>. Desde ${nn(pas - 2)} empieza a <b>aligerar</b> (menos peso, más "u"/"ng"), y no sostengas notas con voz de pecho empujada más arriba de ${nn(pas + 2)}.` : 'Aún no detecté un quiebre claro. Repite el mapa con sirenas amplias, desde lo más grave a lo más agudo.',
+      pas != null ? 'Si prefieres, cambia a falsete <b>a propósito</b> en la nota alta: es un recurso, no un error.' : null),
+    strengths.length ? sec('Tus fortalezas', ...strengths.map((x) => '✓ ' + x)) : null,
+    care.length ? sec('Lo que debes cuidar', ...care) : null,
+    res.length ? sec('Recursos que le sientan a tu voz', ...res, h('button', { class: 'btn small', onclick: () => nav('#leccion-res1') }, 'Ir a "Tus recursos vocales"')) : null,
+    sec('Tu día a día',
+      '1. <b>Tu rutina de 10 minutos</b> (cambia cada día y se arma con tu mapa).',
+      '2. Una de tus canciones, con el informe del profe.',
+      '3. Cada mes, repite el mapa de tu voz para ver cómo cambia.',
+      h('button', { class: 'btn primary', onclick: () => nav('#rutina') }, icon('play', 16), 'Hacer mi rutina de hoy')),
+    h('p', { class: 'small muted' }, `Basado en tu mapa del ${m ? new Date(m.at).toLocaleDateString('es-CL') : '—'} y en ${analyze().n} notas que cantaste.`)));
+}
+
+// ---------- Misiones del día y cofre ----------
+function questsCard() {
+  const qs = dailyQuests(); const ch = chestState();
+  const L = levelOf(load().xp);
+  const chest = ch === 'ready' ? h('button', { class: 'chest ready', onclick: (e) => {
+    const r = openChest(); if (!r) return;
+    track('chest'); sfx('done'); confetti();
+    e.currentTarget.replaceWith(h('div', { class: 'chest open' }, h('span', {}, '🎉'), h('b', {}, `+${r.xp} XP`), r.freeze ? h('small', {}, '¡y un protector de racha 🧊!') : h('small', {}, 'Vuelve mañana por otro cofre')));
+    renderHeader();
+  } }, h('span', { class: 'chest-ic' }, '🎁'), h('b', {}, '¡Abrir cofre!')) : h('div', { class: 'chest' + (ch === 'open' ? ' open' : '') }, h('span', { class: 'chest-ic' }, ch === 'open' ? '✨' : '🎁'), h('small', {}, ch === 'open' ? 'Cofre abierto' : 'Cumple las 3 misiones'));
+  return h('section', { class: 'card quests' },
+    h('div', { class: 'row between' }, h('b', {}, 'Misiones de hoy'), h('span', { class: 'pill' }, `${L.icon} Nivel ${L.n} · ${L.name}`)),
+    h('div', { class: 'lvlbar' }, h('div', { class: 'pfill', style: `width:${Math.round(L.pct * 100)}%` })),
+    h('small', { class: 'muted' }, `${load().xp - L.from} / ${L.to - L.from} XP para el nivel ${L.n + 1}`),
+    h('div', { class: 'q-row' }, h('div', { class: 'q-list' }, ...qs.map((q) => h('div', { class: 'q' + (q.done ? ' done' : '') },
+      h('span', { class: 'q-ic' }, q.done ? '✅' : q.icon), h('div', { class: 'grow' }, h('span', {}, q.text), h('div', { class: 'qbar' }, h('div', { class: 'pfill', style: `width:${Math.min(100, Math.round((q.prog / q.target) * 100))}%` }))), h('small', {}, `${Math.min(q.prog, q.target)}/${q.target}`)))), chest));
+}
+
 // ---------- Lo que el profe aprendió de ti ----------
 function profeCard() {
   const { findings, n } = analyze();
@@ -600,6 +700,9 @@ function profileView() {
   reset.onclick = () => { if (reset.dataset.sure) { resetAll(); nav('#aprender'); } else { reset.dataset.sure = 1; reset.textContent = 'Toca otra vez para confirmar'; } };
   view.replaceChildren(h('div', { class: 'page' }, ...[
     h('h1', {}, 'Tu progreso'),
+    (() => { const L = levelOf(s.xp); return h('div', { class: 'card lvl-card' }, h('div', { class: 'row between' }, h('b', {}, `${L.icon} Nivel ${L.n}: ${L.name}`), h('small', { class: 'muted' }, `${s.xp} XP`)), h('div', { class: 'lvlbar' }, h('div', { class: 'pfill', style: `width:${Math.round(L.pct * 100)}%` })), h('small', { class: 'muted' }, `Te faltan ${L.to - s.xp} XP para el nivel ${L.n + 1}.`)); })(),
+    (() => { const got = badges(); return h('div', { class: 'card' }, h('div', { class: 'row between' }, h('h3', {}, 'Logros'), h('span', { class: 'pill' }, `${Object.keys(got).length} de ${BADGES.length}`)),
+      h('div', { class: 'badges' }, ...BADGES.map((b) => h('div', { class: 'badge' + (got[b.id] ? ' on' : ''), title: b.desc }, h('span', { class: 'b-ic' }, got[b.id] ? b.icon : '🔒'), h('b', {}, b.name), h('small', {}, b.desc))))); })(),
     h('div', { class: 'stat-grid' },
       h('div', { class: 'sbox flame' }, icon('flame', 22), h('b', {}, s.streak || 0), h('small', {}, 'días de racha')),
       h('div', { class: 'sbox xp' }, icon('bolt', 22), h('b', {}, s.xp), h('small', {}, 'XP total')),
@@ -607,6 +710,7 @@ function profileView() {
     h('div', { class: 'card' }, h('h3', {}, 'Tu voz'),
       h('p', {}, r.guessed ? 'Rango sin medir todavía.' : `Rango cómodo: ${noteName(r.low)} a ${noteName(r.high)} (${r.high - r.low} semitonos). Zona central: ${noteName(r.comfort)}.`),
       voiceProfile()?.speak ? h('p', {}, `Voz hablada ≈ ${noteName(Math.round(voiceProfile().speak))} · tu nota de casa: ${noteName(homeNote())}.`) : null,
+      h('button', { class: 'btn primary', onclick: () => nav('#manual') }, icon('note', 18), 'Tu manual de voz'),
       h('button', { class: 'btn', onclick: () => nav('#profe') }, icon('ear', 18), 'Lo que he aprendido de ti'),
       mapCard(),
       diagCard(),
@@ -651,4 +755,5 @@ function installBanner(force = false) {
 if ('serviceWorker' in navigator) window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
 
 document.addEventListener('pointerdown', () => getCtx(), { once: true });
+checkLevel(); // fija tu nivel actual sin celebrar
 route();

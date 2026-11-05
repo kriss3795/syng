@@ -46,7 +46,7 @@ function tone(freq, t, dur, type = 'sine', gain = 0.18, dest) {
   o.connect(g); g.connect(dest || c.destination);
   o.start(t); o.stop(t + dur + 0.02);
 }
-export function sfx(name) {
+export function sfx(name, n = 0) {
   if (settings().sfx === false) return;
   const c = getCtx(); const t = c.currentTime + 0.01;
   switch (name) {
@@ -63,6 +63,8 @@ export function sfx(name) {
       tone(1318.5, t + 0.5, 0.6, 'triangle', 0.12); tone(783.99, t + 0.5, 0.6, 'triangle', 0.08); break;
     case 'streak':
       [392, 523.25, 659.25].forEach((f, i) => tone(f, t + i * 0.08, 0.25, 'sawtooth', 0.05)); break;
+    case 'combo': { // sube medio tono con cada nota seguida
+      const f = 784 * 2 ** (Math.min(n, 14) / 12); tone(f, t, 0.09, 'triangle', 0.1); tone(f * 1.5, t + 0.05, 0.12, 'triangle', 0.07); break; }
     case 'xp':
       tone(1046.5, t, 0.08, 'square', 0.04); tone(1568, t + 0.06, 0.12, 'square', 0.04); break;
   }
