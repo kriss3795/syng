@@ -5,7 +5,7 @@ import { load, save, saveHooks, replaceState } from './store.js';
 
 // Dirección del servidor. Si la app se abre desde Vercel, es el mismo sitio.
 export const API_DEFAULT = 'https://syng-kriss.vercel.app';
-const apiBase = () => (/\.vercel\.app$/.test(location.hostname) ? '' : localStorage.getItem('syng.api') || API_DEFAULT);
+export const apiBase = () => (/\.vercel\.app$/.test(location.hostname) ? '' : localStorage.getItem('syng.api') || API_DEFAULT);
 const AK = 'syng.account';
 export const account = () => { try { return JSON.parse(localStorage.getItem(AK) || 'null'); } catch { return null; } };
 const setAccount = (a) => (a ? localStorage.setItem(AK, JSON.stringify(a)) : localStorage.removeItem(AK));

@@ -4,6 +4,7 @@ import { run, diagFindings, identityView, registerRunner } from './exercises.js'
 import { runVoiceMap, voiceMapView } from './voicemap.js';
 registerRunner('voicemap', runVoiceMap);
 import { runEnergy } from './energy.js';
+import { askProfe, profeOn, readAloud, stopReading, studentContext } from './profe.js';
 import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } from './account.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
@@ -40,7 +41,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -65,6 +66,7 @@ async function route() {
     if (hsh === 'metodo') return methodView();
     if (hsh === 'manual') return manualView();
     if (hsh === 'cuenta') return accountView();
+    if (hsh === 'profe-ia') return chatView();
     if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
     if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
       view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {})), h('h1', {}, 'Tus recursos vocales'), resourcesView(t),
@@ -186,7 +188,7 @@ function homeView() {
       h('div', { class: 'path' }, nodes));
   }
   // En celular: todo en una columna. En computador: el camino a la izquierda y tus tarjetas del día a la derecha.
-  const side = [first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  const side = [chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
   view.replaceChildren(h('div', { class: 'page home' }, installBanner(), h('div', { class: 'home-hero' }, hero),
     side.length ? h('aside', { class: 'home-side' }, ...side) : null, h('div', { class: 'home-path' }, ...path)));
   const cur = view.querySelector('.node.current');
@@ -345,7 +347,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
       if (mySig.aborted) return;
       if (res.info || res.skipped || ex.noScore) break;
       if (res.score < 0.7) fails++;
-      const decision = await feedbackSheet(stage, res, { fails, easier, canEase: fails >= 2 && !easier && canMakeEasier(ex) });
+      const decision = await feedbackSheet(stage, res, { fails, easier, canEase: fails >= 2 && !easier && canMakeEasier(ex), ex, title });
       if (decision === 'next') break;
       if (decision === 'easier') { ex = makeEasier(ex); easier = true; }
     }
@@ -382,7 +384,10 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
   record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null, issues: issueKeys });
   let stars = null;
   if (lesson) stars = setLesson(id, score, level);
-  const moreLevels = lesson && !lesson.check && stars > 0 && level < LEVELS_TO_PASS;
+  // Si el nivel 1 te salió excelente, no te hago repetir la lección: te salto el nivel 2.
+  const skipped = lesson && !lesson.check && level < LEVELS_TO_PASS && score >= 0.88;
+  if (skipped) setLesson(id, score, LEVELS_TO_PASS);
+  const moreLevels = lesson && !lesson.check && stars > 0 && level < LEVELS_TO_PASS && !skipped;
   const passed = !lesson || stars > 0;
   const xp = passed ? Math.round(10 + score * 15) : 5;
   addXp(xp);
@@ -398,6 +403,8 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
     h('div', { class: 'center' }, chincol(passed ? 'celebra' : 'piensa', 120)),
     h('h1', { class: 'center' }, passed ? (moreLevels ? `¡Nivel ${level} listo!` : lesson && level === 3 ? '¡Maestría!' : lesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
     moreLevels ? h('p', { class: 'center' }, `Ahora la misma lección en el nivel ${level + 1}: ${LEVEL_NAMES[level + 1].toLowerCase()}. Repetir es lo que afirma la nota en tu oído.`) : null,
+    skipped ? h('p', { class: 'center' }, '¡Te salió excelente! Te salto el nivel 2: no tiene sentido repetir lo que ya dominas.') : null,
+    lesson || scores.length >= 2 ? profeBox('lesson', { clase: title, puntajePromedio: Math.round(score * 100) + '%', ejercicios: scores.length, aprobada: passed, nivel: level, saltoDeNivel: !!skipped, problemasFrecuentes: [...new Set(issueKeys)].slice(0, 4), desviacionPromedioCents: avgC != null ? Math.round(avgC) : null }) : null,
     lesson ? h('div', { class: 'stars-big' }, ...[0, 1, 2].map((k) => h('span', { class: k < stars ? 'on' : '' }, '★'))) : null,
     h('div', { class: 'done-stats' },
       h('div', { class: 'dstat' }, h('small', {}, 'Resultado'), h('b', {}, pct(score))),
@@ -416,7 +423,28 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
 }
 
 // Hoja de resultado del ejercicio (estilo Duolingo, con el diagnóstico del profe)
-function feedbackSheet(stage, res, { fails, easier, canEase }) {
+const plain = (x) => String(x || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+// El profe con IA comenta tu intento (si tienes cuenta). Mientras piensa, ves el consejo de siempre.
+function profeBox(kind, data) {
+  if (!profeOn()) return null;
+  const box = h('div', { class: 'profe-ai thinking' }, h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe', h('span', { class: 'dots' }, h('i'), h('i'), h('i'))), h('p', { class: 'small muted' }, 'Escuchando tu intento…'));
+  askProfe(kind, data).then((r) => {
+    if (!box.isConnected && !document.body.contains(box)) return;
+    if (!r.text) { box.remove(); return; }
+    const rd = h('button', { class: 'iconbtn small', 'aria-label': 'Escuchar', onclick: () => readAloud(r.text) }, icon('speaker', 16));
+    box.classList.remove('thinking');
+    box.replaceChildren(h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe', rd), h('p', {}, r.text));
+  });
+  return box;
+}
+function listenRow(res) {
+  if (!res.take && !res.model) return null;
+  let url = null; let audio = null;
+  const mine = res.take ? h('button', { class: 'btn small', onclick: () => { stopReading(); if (audio) { audio.pause(); audio = null; return; } url = url || URL.createObjectURL(res.take); audio = new Audio(url); audio.onended = () => (audio = null); audio.play().catch(() => {}); } }, '🎧 Escúchate') : null;
+  const model = res.model ? h('button', { class: 'btn small', onclick: () => { stopReading(); getCtx(); res.model(); } }, '🎹 Cómo era') : null;
+  return h('div', { class: 'listen-row' }, h('span', { class: 'small muted' }, 'Compara con tu oído:'), mine, model);
+}
+function feedbackSheet(stage, res, { fails, easier, canEase, ex = {}, title = '' }) {
   return new Promise((resolve) => {
     const v = verdict(res.score);
     const top = (res.issues || [])[0];
@@ -426,6 +454,9 @@ function feedbackSheet(stage, res, { fails, easier, canEase }) {
       h('div', { class: 'sheet-head' }, scoreRing(res.score, 72), h('div', {}, h('h2', {}, v.title), h('p', { class: 'small' }, res.detail || ''))),
       top ? say(`${top.text}<br><span class="tip">${top.tip}</span>`, v.mood, { voice: [v.voice, top.voice].filter(Boolean) })
         : say(res.score >= 0.7 ? 'Así se hace. Sigamos.' : 'Escucha con atención y vuelve a intentarlo.', v.mood, { voice: v.voice }),
+      res.early ? h('p', { class: 'small ok-txt' }, '✨ Te salió tan bien que corté las rondas que faltaban.') : null,
+      listenRow(res),
+      profeBox('exercise', { clase: title, ejercicio: plain(ex.title || ex.text || ex.type).slice(0, 220), tipo: ex.type, puntaje: Math.round((res.score || 0) * 100) + '%', resultado: plain(res.detail), problemas: (res.issues || []).slice(0, 3).map((x) => plain(x.text)), desviacionCents: res.cents != null ? Math.round(res.cents) : null, intentoNumero: fails + 1, cortadoPorBuenResultado: !!res.early }),
       easier ? h('p', { class: 'small muted' }, 'Hiciste la versión más fácil. Cuando te sientas listo, repite la lección completa.') : null,
       h('div', { class: 'actionbar' },
         canEase ? h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('easier'); } }, 'Hacerlo más fácil') : h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('again'); } }, icon('repeat', 18), 'Repetir'),
@@ -557,6 +588,43 @@ function methodView() {
       h('p', { class: 'small' }, '• Seth Riggs, "Singing for the Stars": primero construir confianza, después la voz de habla aplicada al canto.'),
       h('p', { class: 'small' }, '• Investigación sobre quien desafina (Pfordresher y Brown, 2007; Hutchins y Peretz, 2012): lo primero es conectar oído y voz.')),
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver al camino'))));
+}
+
+// ---------- Habla con tu profe (IA) ----------
+function chatCard() {
+  return h('button', { class: 'card rec chat-card', onclick: () => { sfx('select'); nav('#profe-ia'); } }, chincol('hola', 48),
+    h('div', {}, h('b', {}, 'Habla con tu profe'), h('div', { class: 'small muted' }, 'Pregúntale lo que quieras: por qué te pasa algo, cómo mejorarlo o qué practicar hoy.')), icon('chevron'));
+}
+function chatView() {
+  const back = h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => { stopReading(); nav('#aprender'); } }, icon('back')), h('b', {}, 'Tu profe'), h('span', {}));
+  if (!profeOn()) {
+    view.replaceChildren(h('div', { class: 'page' }, back, say('Para conversar conmigo necesito que tengas tu cuenta: así guardo lo que sé de tu voz y te respondo pensando en ti.', 'piensa'),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#cuenta') }, 'Crear o entrar a mi cuenta')))); return;
+  }
+  let msgs = []; try { msgs = JSON.parse(localStorage.getItem('syng.chat') || '[]'); } catch {}
+  const list = h('div', { class: 'chat-list' });
+  const bubble = (m) => m.role === 'user' ? h('div', { class: 'msg me' }, m.content) : h('div', { class: 'msg profe' }, chincol('feliz', 36), h('div', {}, h('p', {}, m.content), h('button', { class: 'linkbtn small', onclick: () => readAloud(m.content) }, '🔊 Escuchar')));
+  const paint = () => { list.replaceChildren(...(msgs.length ? msgs.map(bubble) : [say('¡Hola! Soy tu profe. Conozco lo que la app ha medido de tu voz. Cuéntame qué te cuesta o qué quieres lograr, y lo trabajamos juntos.', 'feliz')])); list.lastElementChild && list.lastElementChild.scrollIntoView({ block: 'end', behavior: 'smooth' }); };
+  const inp = h('textarea', { class: 'inp chat-inp', rows: 2, placeholder: 'Escribe tu pregunta…' });
+  const sendBtn = h('button', { class: 'btn primary' }, 'Enviar');
+  const sendMsg = async (text) => {
+    text = String(text || '').trim(); if (!text || sendBtn.disabled) return;
+    msgs.push({ role: 'user', content: text }); inp.value = ''; paint();
+    const wait = h('div', { class: 'msg profe' }, chincol('piensa', 36), h('div', { class: 'profe-ai thinking' }, h('span', { class: 'dots' }, h('i'), h('i'), h('i'))));
+    list.append(wait); wait.scrollIntoView({ block: 'end', behavior: 'smooth' }); sendBtn.disabled = true;
+    const r = await askProfe('chat', {}, msgs.slice(-10), 20000);
+    sendBtn.disabled = false;
+    msgs.push({ role: 'assistant', content: r.text || ('No pude responder: ' + (r.error || 'intenta de nuevo.')) });
+    if (!r.text) msgs[msgs.length - 1].err = true;
+    msgs = msgs.slice(-30); localStorage.setItem('syng.chat', JSON.stringify(msgs.filter((m) => !m.err))); paint();
+    if (r.text) readAloud(r.text);
+  };
+  sendBtn.onclick = () => sendMsg(inp.value);
+  inp.onkeydown = (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(inp.value); } };
+  const chips = h('div', { class: 'chips-row' }, ...['No logro afinar, ¿qué hago?', 'Dame un ejercicio para hoy', '¿Por qué se me quiebra la voz?', '¿Cómo canto con fuerza sin gritar?', '¿Qué tipo de canciones me quedan bien?'].map((t) => h('button', { class: 'qchip', onclick: () => sendMsg(t) }, t)));
+  view.replaceChildren(h('div', { class: 'page chat-page' }, back, list, chips, h('div', { class: 'chat-bar' }, inp, sendBtn),
+    h('p', { class: 'small muted' }, 'Tu profe usa inteligencia artificial con lo que la app midió de tu voz. Puede equivocarse: si algo duele, para y consulta a un fonoaudiólogo.')));
+  paint();
 }
 
 // ---------- Tu cuenta ----------

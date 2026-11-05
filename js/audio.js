@@ -45,6 +45,16 @@ export async function startMic() {
   return mic;
 }
 
+// Grabadora simple del micrófono (para "Escúchate": oír cómo cantaste)
+export function startRecorder() {
+  try {
+    if (!mic || !window.MediaRecorder) return null;
+    const rec = new MediaRecorder(mic.stream); const chunks = [];
+    rec.ondataavailable = (e) => e.data && e.data.size && chunks.push(e.data);
+    rec.start();
+    return { stop: () => new Promise((res) => { if (rec.state === 'inactive') return res(null); rec.onstop = () => res(chunks.length ? new Blob(chunks, { type: rec.mimeType || 'audio/webm' }) : null); try { rec.stop(); } catch { res(null); } }) };
+  } catch { return null; }
+}
 export function stopMic() {
   if (mic) {
     mic.stream.getTracks().forEach((t) => t.stop());

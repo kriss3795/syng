@@ -574,6 +574,9 @@ export async function linesView(root, nav, id, sig) {
     stopSpeaking();
     if (phase === 'intro') {
       renderLyrics(L, lines, lines[i].t0);
+      // vista previa: las notas de esta línea, para que veas la forma de la melodía antes de escucharla
+      roll.targets = a.notes.filter((n) => n.t0 >= lines[i].t0 - 0.15 && n.t0 < lines[i].t1).map((n) => ({ t0: n.t0, t1: n.t1, m0: n.m, m1: n.m, frames: [], result: 'demo' }));
+      roll.clearUser(); requestAnimationFrame(() => roll.draw(span(i).t0 + 1.2, { showUser: false }));
       actions.replaceChildren(h('button', { class: 'btn primary big', onclick: () => stage('listen') }, icon('speaker', 18), `Escuchar línea ${i + 1}`));
       return;
     }

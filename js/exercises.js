@@ -1,6 +1,6 @@
 // Motores de ejercicios. Cada runner recibe (spec, root, sig) y devuelve una promesa con
 // { score: 0..1, cents?: desviación media, timing?: ms, detail: texto }.
-import { getCtx, startMic, readPitch, resetSmoother, playNote, playGlide, click, startDrone, latency, micStream, decodeFile, readSpectrum } from './audio.js';
+import { getCtx, startMic, readPitch, resetSmoother, playNote, playGlide, click, startDrone, latency, micStream, decodeFile, readSpectrum, startRecorder } from './audio.js';
 import { noteName, solfege } from './pitch.js';
 import { h, Roll, tuner, levelMeter, sleep, icon } from './ui.js';
 import { say, chincol, diagnoseSeq, line } from './coach.js';
@@ -452,12 +452,22 @@ async function runSeq(spec, root, sig) {
   roll.fitTargets(3);
   for (const tg of targets) if (tg.demo) tg.result = 'demo';
 
-  for (const e of events) {
-    const at = T0 + e.t;
-    if (e.type === 'click') click(at, e.accent, e.soft ? 0.12 : 0.28);
-    else if (e.type === 'note') playNote(e.m0, at, e.d, e.gain);
-    else playGlide(e.m0, e.m1, at, e.d, e.gain);
-  }
+  // Los sonidos se programan poco a poco (1,5 s antes), así puedo cortar el ejercicio si ya te salió perfecto.
+  events.sort((a, b) => a.t - b.t); let evI = 0;
+  const scheduleAhead = () => {
+    const lim = c.currentTime - T0 + 1.5;
+    while (evI < events.length && events[evI].t < lim) {
+      const e = events[evI++]; const at = T0 + e.t;
+      if (e.type === 'click') click(at, e.accent, e.soft ? 0.12 : 0.28);
+      else if (e.type === 'note') playNote(e.m0, at, e.d, e.gain);
+      else playGlide(e.m0, e.m1, at, e.d, e.gain);
+    }
+  };
+  scheduleAhead();
+  const recorder = startRecorder();
+  // Si una ronda que cantas tú sale muy bien, no te hago repetir las demás: repetir lo que ya dominas aburre y no enseña.
+  const scoredRounds = rounds.map((r, ri) => ({ ...r, ri, tgs: targets.filter((x) => !x.demo && x.t0 >= r.t0 - 0.01 && x.t0 < r.t1) })).filter((r) => r.tgs.length);
+  let earlyStop = null, checkedRound = -1;
 
   resetSmoother();
   const lat = latency();
@@ -467,6 +477,18 @@ async function runSeq(spec, root, sig) {
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
+    scheduleAhead();
+    if (earlyStop != null && now > earlyStop) break;
+    const rIdx = scoredRounds.findIndex((r) => now > r.t1 + 0.15 && r.ri > checkedRound);
+    if (rIdx >= 0 && earlyStop == null && !spec.noEarly) {
+      const r = scoredRounds[rIdx]; checkedRound = r.ri;
+      const okN = r.tgs.filter((tg) => { const d = tg.t1 - tg.t0; const fr = tg.frames.filter((f) => f.t >= tg.t0 + Math.min(0.12, d * 0.15) && f.t <= tg.t1 - Math.min(0.06, d * 0.1)); return fr.length && fr.filter((f) => f.ok).length / fr.length >= 0.6; }).length;
+      if (rIdx < scoredRounds.length - 1 && okN / r.tgs.length >= 0.85) {
+        earlyStop = now + 1.2; const cutT = r.t1 + 0.2;
+        for (const tg of targets) if (!tg.demo && tg.t0 > cutT) tg.skip = true;
+        cues.push({ t0: now, t1: now + 2, txt: '¡Perfecto! Ya lo tienes: no hace falta repetir 🎉' }); sfx('combo', 5);
+      }
+    }
     const p = readPitch();
     all.push({ t: now, m: p.midi, raw: p.raw });
     let active = null;
@@ -526,6 +548,8 @@ async function runSeq(spec, root, sig) {
     status.textContent = cue ? '👂 ' + cue.txt : liveTip && cur && !cur.demo ? liveTip.txt : mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
     await raf();
   }
+  const take = recorder ? await recorder.stop() : null;
+  if (earlyStop != null) { scored.splice(0, scored.length, ...scored.filter((tg) => !tg.skip)); }
   // ---- evaluar ----
   // Afinación: % del cuerpo de cada nota dentro de la zona.
   // Entrada: primer instante en que tu voz (sin suavizar) llega a la nota DESPUÉS de no estar en ella
@@ -589,7 +613,9 @@ async function runSeq(spec, root, sig) {
     score, cents, timing: tAvg != null ? tAvg * 1000 : null,
     detail: `${hits} de ${scored.length} notas afinadas` + (cents != null ? `. Cuando llegaste a la nota, te desviaste en promedio ${Math.round(cents)} cents` : '') + tmsg.replace(' · ', '. '),
     issues: [...habitIssues(scored), ...diagnoseSeq(scored, all, { timingErrs: spec.noTiming ? [] : timingErrs, tol })].filter((x, i, a) => a.findIndex((y) => y.key === x.key) === i),
-    keepView: canvas, maxCombo,
+    keepView: canvas, maxCombo, take, early: earlyStop != null,
+    model: () => { const c2 = getCtx(); const r0 = scoredRounds[0]; if (!r0) return 0; const t0 = r0.tgs[0].t0; r0.tgs.forEach((tg) => (tg.m0 === tg.m1 ? playNote(tg.m0, c2.currentTime + 0.1 + tg.t0 - t0, (tg.t1 - tg.t0) * 0.95, 0.26) : playGlide(tg.m0, tg.m1, c2.currentTime + 0.1 + tg.t0 - t0, tg.t1 - tg.t0, 0.22))); return r0.tgs[r0.tgs.length - 1].t1 - t0; },
+    spec: { mode, bpm: spec.bpm, tol, nNotes: scored.length },
   };
 }
 
