@@ -22,7 +22,20 @@ const TASK = {
   chat: 'Responde la pregunta del alumno como su profe, en máximo 140 palabras, usando lo que sabes de su voz (en los datos) cuando sirva. Si pide un ejercicio, describe uno concreto, paso a paso y corto, que pueda hacer ahora mismo.',
 };
 
+// Opción gratis sin tarjeta: una clave de Google AI Studio (GEMINI_API_KEY) usa Gemini directamente.
+async function gemini(messages, maxTokens) {
+  const r = await fetch('https://generativelanguage.googleapis.com/v1beta/openai/chat/completions', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + process.env.GEMINI_API_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: process.env.GEMINI_MODEL || 'gemini-2.5-flash', messages, max_tokens: maxTokens + 600, temperature: 0.7, reasoning_effort: 'none' }),
+  });
+  const j = await r.json().catch(() => ({}));
+  const j0 = Array.isArray(j) ? j[0] : j;
+  if (r.ok && j0.choices && j0.choices[0]) return { text: String(j0.choices[0].message.content || '').trim(), model: 'gemini' };
+  console.error('gemini', r.status, JSON.stringify(j).slice(0, 400));
+  throw Object.assign(new Error('El profe con IA no está disponible ahora.'), { status: 503, detail: { status: r.status, msg: (j0.error && j0.error.message) || r.statusText } });
+}
 async function gateway(req, messages, maxTokens) {
+  if (process.env.GEMINI_API_KEY) return gemini(messages, maxTokens);
   const token = process.env.AI_GATEWAY_API_KEY || req.headers['x-vercel-oidc-token'] || process.env.VERCEL_OIDC_TOKEN;
   if (!token) throw Object.assign(new Error('El profe con IA aún no está activado en el servidor.'), { status: 503 });
   let last = null;
@@ -37,7 +50,7 @@ async function gateway(req, messages, maxTokens) {
     if (r.status === 401 || r.status === 403 || r.status === 402) break; // sin permiso o sin créditos: no sirve probar otro modelo
   }
   console.error('gateway', last);
-  throw Object.assign(new Error(last && (last.status === 402 || /credit/i.test(String(last.msg))) ? 'El profe con IA se quedó sin créditos este mes.' : 'El profe con IA no está disponible ahora.'), { status: 503, detail: last });
+  throw Object.assign(new Error(last && /credit card/i.test(String(last.msg)) ? 'El profe con IA aún no está activado (falta registrar una tarjeta en Vercel o una clave gratis de Google).' : last && (last.status === 402 || /credit/i.test(String(last.msg))) ? 'El profe con IA se quedó sin créditos este mes.' : 'El profe con IA no está disponible ahora.'), { status: 503, detail: last });
 }
 
 export default async function handler(req, res) {
