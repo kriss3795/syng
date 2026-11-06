@@ -8,7 +8,7 @@
 import { h, sleep, tuner } from './ui.js';
 import { getCtx, readPitch, resetSmoother, playNote } from './audio.js';
 import { noteName } from './pitch.js';
-import { load, save, homeNote, getRange } from './store.js';
+import { load, save, homeNote, getRange, voiceProfile } from './store.js';
 import { say } from './coach.js';
 import { sfx, stopSpeaking } from './voice.js';
 import { ensureMic, raf } from './exercises.js';
@@ -52,7 +52,17 @@ export async function runFindNote(spec, root, sig) {
     const again = h('button', { class: 'btn' }, '🔊 Oír de nuevo');
     const help = h('button', { class: 'btn' }, '🆘 Ayúdame');
     const skip = h('button', { class: 'btn ghost' }, 'Saltar');
-    root.replaceChildren(h('div', { class: 'ex' }, h('div', { class: 'row between' }, stepPill, hintPill), coachBox, h('div', { class: 'fn-wrap' }, tu.el, arrow), holdBar,
+    // Ficha "cómo cantarla": nota, sonido, fuerza y duración, siempre a la vista
+    const vp = voiceProfile() || {}; const spk = vp.speak ? Math.round(vp.speak) : null; const spkRms = vp.speakRms || 0.04;
+    const rel = spk == null ? '' : target === spk ? ' (igual que tu voz al hablar)' : target > spk ? ` (${target - spk} semitono${target - spk > 1 ? 's' : ''} más agudo que tu voz al hablar)` : ` (${spk - target} semitono${spk - target > 1 ? 's' : ''} más grave que tu voz al hablar)`;
+    const recipe = h('div', { class: 'recipe' },
+      h('div', {}, h('b', {}, '🎵 Nota'), h('span', {}, noteName(target) + rel)),
+      h('div', {}, h('b', {}, '👄 Sonido'), h('span', {}, '"uuu" suave, labios redondos')),
+      h('div', {}, h('b', {}, '🔊 Fuerza'), h('span', {}, 'como conversando, no susurro ni grito')),
+      h('div', {}, h('b', {}, '⏱ Cuánto'), h('span', {}, '1 segundo parejo en la zona verde')));
+    const strFill = h('div', { class: 'str-fill' }); const strLbl = h('span', { class: 'str-lbl' }, 'Fuerza');
+    const strength = h('div', { class: 'str-bar' }, h('div', { class: 'str-zone' }), strFill, strLbl);
+    root.replaceChildren(h('div', { class: 'ex' }, h('div', { class: 'row between' }, stepPill, hintPill), coachBox, recipe, h('div', { class: 'fn-wrap' }, tu.el, arrow), strength, holdBar,
       h('div', { class: 'grow' }), h('div', { class: 'actionbar fn-actions' }, again, help, skip)));
 
     let quietUntil = 0;
@@ -70,6 +80,9 @@ export async function runFindNote(spec, root, sig) {
         const now = c.currentTime; const dt = Math.min(0.1, now - lastT); lastT = now;
         if (now < quietUntil) { tu.update(null, m); tu.setMsg('Escucha…'); arrow.className = 'fn-arrow'; await raf(); continue; }
         const p = readPitch();
+        const ratio = p.rms / spkRms; strFill.style.width = Math.min(100, (ratio / 2.5) * 100) + '%';
+        strLbl.textContent = p.rms < 0.004 ? 'Fuerza' : ratio < 0.55 ? 'Muy bajito: más voz' : ratio > 2 ? 'Muy fuerte: afloja' : 'Fuerza: bien ✓';
+        strFill.className = 'str-fill ' + (p.rms < 0.004 ? '' : ratio < 0.55 || ratio > 2 ? 'warn' : 'ok');
         if (p.midi == null) {
           tu.update(null, m);
           if (tStart && now - lastReplay > 7 && hint >= 1) { play(m); lastReplay = now; }

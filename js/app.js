@@ -8,10 +8,12 @@ import { runEnergy } from './energy.js';
 import { askProfe, profeOn, readAloud, stopReading, studentContext } from './profe.js';
 import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } from './account.js';
 import { runFindNote } from './findnote.js';
+import { runMicCheck } from './miccheck.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
 registerRunner('resources', runResources);
 registerRunner('findnote', runFindNote);
+registerRunner('miccheck', runMicCheck);
 registerRunner('tutor', runTutor);
 import { phraseExercises } from './songcoach.js';
 import { track, checkLevel, levelOf, dailyQuests, openChest, chestState, weekDots, applyFreeze, freezes, BADGES, badges, toast } from './fun.js';
@@ -45,7 +47,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(microfono$|clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -72,6 +74,7 @@ async function route() {
     if (hsh === 'cuenta') return accountView();
     if (hsh === 'profe-ia') return chatView();
     if (hsh === 'clase') return session({ title: 'Clase con tu profe', color: 'teal', exercises: [{ type: 'tutor' }], id: 'clase', back: '#aprender', backLabel: 'Volver al inicio' });
+    if (hsh === 'microfono') return session({ title: '¿Me está midiendo bien?', color: 'teal', exercises: [{ type: 'miccheck' }], id: 'microfono', back: '#perfil', backLabel: 'Volver' });
     if (hsh === 'encuentra') return session({ title: 'Encuentra la nota', color: 'teal', exercises: [{ type: 'findnote', n: 6 }], id: 'encuentra', back: '#aprender', backLabel: 'Volver al inicio' });
     if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
     if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
@@ -499,7 +502,8 @@ function gymView() {
       tile('#extra-dinamica', 'wave', 'Dinámica', 'Crescendo y messa di voce', 'orange'),
       tile('#extra-ganas', 'party', 'Cantar con ganas', 'Energía y proyección, sin gritar', 'orange'),
       tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal'),
-      tile('#encuentra', 'target', 'Encuentra la nota', 'Taller guiado, sin apuro', 'teal')),
+      tile('#encuentra', 'target', 'Encuentra la nota', 'Taller guiado, sin apuro', 'teal'),
+      tile('#microfono', 'mic', '¿Me mide bien?', 'Prueba de micrófono en 1 min', 'teal')),
     h('h2', { class: 'sec' }, 'Afinación y oído'),
     h('div', { class: 'tiles' },
       tile('#extra-fina', 'target', 'Afinación fina', 'Notas clavadas y bordón', 'blue'),
@@ -640,6 +644,8 @@ async function runTutor(spec, root, sig) {
     h('div', { class: 'tutor-ladder' }, ...LADDER.map((l, i) => h('div', { class: 'tl-step' + (i < level ? ' done' : i === level ? ' cur' : '') }, h('span', {}, i + 1), l.name))),
     h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); getCtx(); res(); } }, 'Empezar la clase')))));
   if (sig.aborted) return { score: 0 };
+  // 1b) la primera vez: comprobar juntos que el micrófono te mide bien (así confías en lo que marco)
+  if (!load().micCheck && !spec.noVoice) { await run({ type: 'miccheck' }, root, sig); if (sig.aborted) return { score: 0 }; }
   // 2) tu propia voz como modelo (una sola vez)
   let myV = await getMyVoice();
   if (!myV && !spec.noVoice) { myV = await captureMyVoice(root, sig); if (sig.aborted) return { score: 0 }; }
@@ -978,6 +984,7 @@ function profileView() {
       voiceProfile()?.speak ? h('p', {}, `Voz hablada ≈ ${noteName(Math.round(voiceProfile().speak))} · tu nota de casa: ${noteName(homeNote())}.`) : null,
       h('button', { class: 'btn primary', onclick: () => nav('#manual') }, icon('note', 18), 'Tu manual de voz'),
       h('button', { class: 'btn', onclick: () => nav(lastResTest() ? '#recursos-ver' : '#recursos') }, '🪶 Tus recursos vocales'),
+      h('button', { class: 'btn', onclick: () => nav('#microfono') }, '🎙️ ¿Me está midiendo bien?'),
       h('button', { class: 'btn', onclick: () => nav('#profe') }, icon('ear', 18), 'Lo que he aprendido de ti'),
       mapCard(),
       diagCard(),
