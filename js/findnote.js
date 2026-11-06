@@ -54,7 +54,8 @@ export async function runFindNote(spec, root, sig) {
     const skip = h('button', { class: 'btn ghost' }, 'Saltar');
     // Ficha "cómo cantarla": nota, sonido, fuerza y duración, siempre a la vista
     const vp = voiceProfile() || {}; const spk = vp.speak ? Math.round(vp.speak) : null; const spkRms = vp.speakRms || 0.04;
-    const rel = spk == null ? '' : target === spk ? ' (igual que tu voz al hablar)' : target > spk ? ` (${target - spk} semitono${target - spk > 1 ? 's' : ''} más agudo que tu voz al hablar)` : ` (${spk - target} semitono${spk - target > 1 ? 's' : ''} más grave que tu voz al hablar)`;
+    const ref = vp.comfort != null ? vp.comfort : spk; const refTxt = vp.comfort != null ? 'tu nota cómoda' : 'tu voz al hablar';
+    const rel = ref == null ? '' : target === ref ? ` (justo ${refTxt})` : target > ref ? ` (${target - ref} semitono${target - ref > 1 ? 's' : ''} sobre ${refTxt})` : ` (${ref - target} semitono${ref - target > 1 ? 's' : ''} bajo ${refTxt})`;
     const recipe = h('div', { class: 'recipe' },
       h('div', {}, h('b', {}, '🎵 Nota'), h('span', {}, noteName(target) + rel)),
       h('div', {}, h('b', {}, '👄 Sonido'), h('span', {}, '"uuu" suave, labios redondos')),

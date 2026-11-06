@@ -65,7 +65,12 @@ export function record(entry) {
 }
 
 export function getRange() {
-  return load().range || { low: 48, high: 65, comfort: 53, guessed: true };
+  const s = load(); const v = s.voice || {};
+  const r = s.range || { low: 48, high: 65, comfort: 53, guessed: true };
+  if (v.comfort == null) return r;
+  // tu nota cómoda medida manda: los ejercicios se centran ahí
+  if (r.guessed) return { low: v.comfort - 7, high: v.comfort + 8, comfort: v.comfort, guessed: true };
+  return { ...r, comfort: Math.max(r.low + 2, Math.min(r.high - 2, v.comfort)) };
 }
 export function setRange(r) { load().range = r; save(); }
 
@@ -141,7 +146,9 @@ export function voiceProfile() { return load().voice || null; }
 export function setVoiceProfile(v) { load().voice = { ...(load().voice || {}), ...v }; save(); }
 export function homeNote() {
   const r = getRange(); const v = voiceProfile();
-  const n = v && v.speak ? Math.round(v.speak) + 1 : r.comfort; // un poquito sobre la voz hablada: cómodo y natural
+  // 1º tu nota cómoda medida (prueba "Tu nota cómoda"); si no existe, un poquito sobre tu voz hablada
+  const n = v && v.comfort != null ? v.comfort : v && v.speak ? Math.round(v.speak) + 1 : r.comfort;
+  if (v && v.comfort != null) return r.guessed ? n : Math.max(r.low + 1, Math.min(r.high - 1, n));
   if (r.guessed) return Math.max(40, Math.min(72, n)); // aún sin medir tu rango: confiamos en tu voz hablada
   return Math.max(r.low + 1, Math.min(r.high - 2, n));
 }

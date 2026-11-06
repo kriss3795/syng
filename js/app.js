@@ -10,11 +10,13 @@ import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } fr
 import { runFindNote } from './findnote.js';
 import { SONGS, songExercises, songStars, setSongStars, LEVEL_TXT } from './cancionero.js';
 import { runMicCheck } from './miccheck.js';
+import { runComfort } from './comfort.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
 registerRunner('resources', runResources);
 registerRunner('findnote', runFindNote);
 registerRunner('miccheck', runMicCheck);
+registerRunner('comfort', runComfort);
 registerRunner('tutor', runTutor);
 import { phraseExercises } from './songcoach.js';
 import { track, checkLevel, levelOf, dailyQuests, openChest, chestState, weekDots, applyFreeze, freezes, BADGES, badges, toast } from './fun.js';
@@ -48,7 +50,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(canc-|microfono$|clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(nota-comoda$|canc-|microfono$|clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -75,6 +77,7 @@ async function route() {
     if (hsh === 'cuenta') return accountView();
     if (hsh === 'profe-ia') return chatView();
     if (hsh === 'clase') return session({ title: 'Clase con tu profe', color: 'teal', exercises: [{ type: 'tutor' }], id: 'clase', back: '#aprender', backLabel: 'Volver al inicio' });
+    if (hsh === 'nota-comoda') return session({ title: 'Tu nota cómoda para cantar', color: 'teal', exercises: [{ type: 'comfort' }], id: 'nota-comoda', back: '#aprender', backLabel: 'Volver al inicio' });
     if (hsh === 'microfono') return session({ title: '¿Me está midiendo bien?', color: 'teal', exercises: [{ type: 'miccheck' }], id: 'microfono', back: '#perfil', backLabel: 'Volver' });
     if (hsh === 'cancionero') return cancioneroView();
     { const m = /^canc-(\w+)-(\d)$/.exec(hsh); if (m) { const sg = SONGS.find((x) => x.id === m[1]); if (sg) { const lv = Number(m[2]); return session({ title: `${sg.title} · ${LEVEL_TXT[lv]}`, color: 'purple', exercises: songExercises(sg, lv), id: hsh, back: '#cancionero', backLabel: 'Volver al cancionero' }); } } }
@@ -513,7 +516,8 @@ function gymView() {
       tile('#extra-ganas', 'party', 'Cantar con ganas', 'Energía y proyección, sin gritar', 'orange'),
       tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal'),
       tile('#encuentra', 'target', 'Encuentra la nota', 'Taller guiado, sin apuro', 'teal'),
-      tile('#microfono', 'mic', '¿Me mide bien?', 'Prueba de micrófono en 1 min', 'teal')),
+      tile('#microfono', 'mic', '¿Me mide bien?', 'Prueba de micrófono en 1 min', 'teal'),
+      tile('#nota-comoda', 'note', 'Tu nota cómoda', 'Dónde te acomoda cantar', 'teal')),
     h('h2', { class: 'sec' }, 'Afinación y oído'),
     h('div', { class: 'tiles' },
       tile('#extra-fina', 'target', 'Afinación fina', 'Notas clavadas y bordón', 'blue'),
@@ -670,6 +674,8 @@ async function runTutor(spec, root, sig) {
   }
   // 1b) la primera vez: comprobar juntos que el micrófono te mide bien (así confías en lo que marco)
   if (!load().micCheck && !spec.noVoice) { await run({ type: 'miccheck' }, root, sig); if (sig.aborted) return { score: 0 }; }
+  // 1c) la primera vez: tu nota cómoda para CANTAR (no siempre es la de hablar)
+  if (!(voiceProfile() || {}).comfort && !spec.noVoice) { await run({ type: 'comfort' }, root, sig); if (sig.aborted) return { score: 0 }; }
   // 2) tu propia voz como modelo (una sola vez)
   let myV = await getMyVoice();
   if (!myV && !spec.noVoice) { myV = await captureMyVoice(root, sig); if (sig.aborted) return { score: 0 }; }
@@ -1037,6 +1043,7 @@ function profileView() {
       h('button', { class: 'btn primary', onclick: () => nav('#manual') }, icon('note', 18), 'Tu manual de voz'),
       h('button', { class: 'btn', onclick: () => nav(lastResTest() ? '#recursos-ver' : '#recursos') }, '🪶 Tus recursos vocales'),
       h('button', { class: 'btn', onclick: () => nav('#microfono') }, '🎙️ ¿Me está midiendo bien?'),
+      h('button', { class: 'btn', onclick: () => nav('#nota-comoda') }, '🎵 Tu nota cómoda para cantar' + ((voiceProfile() || {}).comfort != null ? ': ' + noteName((voiceProfile() || {}).comfort) : '')),
       h('button', { class: 'btn', onclick: () => nav('#profe') }, icon('ear', 18), 'Lo que he aprendido de ti'),
       mapCard(),
       diagCard(),

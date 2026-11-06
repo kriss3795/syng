@@ -675,3 +675,7 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 @media (min-width: 1000px) { .home-side .more-box { margin-top: 12px; } }
 @media (min-width: 1000px) { .page.home { grid-template-rows: auto auto 1fr; } .home-path { align-self: start; } }
 @media (max-width: 520px) { .hero .stage-chip, .hero .week, .hero .center-link { display: none; } .hero .goal .ring { transform: scale(.8); } }
+.comfort-chart { display: grid; gap: 6px; }
+.cc-row { display: grid; grid-template-columns: 52px 1fr 28px; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
+.cc-row.in { background: var(--primary-l); }
+.cc-bar { height: 12px; border-radius: 99px; background: var(--line); overflow: hidden; } .cc-bar i { display: block; height: 100%; background: var(--primary); }
