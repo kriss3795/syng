@@ -6,6 +6,7 @@
 // La tonalidad se ajusta sola a tu rango (seq() centra la melodía en tu zona cómoda).
 import { seq } from './curriculum.js';
 import { load, save } from './store.js';
+import { track } from './fun.js';
 
 // [semitono, duración en tiempos, sílaba ('-' al final = se une con la siguiente), fin de frase]
 const N = (arr) => arr.map(([s, d, l, br]) => ({ s, d, l, br: !!br }));
@@ -63,5 +64,5 @@ export function songExercises(song, level) {
   return [seq(song.notes, { mode: 'read', bpm: song.bpm, tol: 85, ttol: 220, reps: [0, 0], karaoke: true, text: `<b>${song.title}</b> tú solo: te doy la primera nota y la cantas con la letra en pantalla. ¡Como en un escenario!` })];
 }
 export const songStars = (id) => ((load().cancionero || {})[id] || 0);
-export function setSongStars(id, lvl) { const s = load(); s.cancionero = s.cancionero || {}; s.cancionero[id] = Math.max(s.cancionero[id] || 0, lvl); save(); }
+export function setSongStars(id, lvl) { const s = load(); s.cancionero = s.cancionero || {}; const before = s.cancionero[id] || 0; s.cancionero[id] = Math.max(before, lvl); save(); if (lvl > before) track('estrella', { level: lvl, all: SONGS.every((x) => (s.cancionero[x.id] || 0) > 0) }); }
 export const LEVEL_TXT = ['', 'Frase a frase', 'Conmigo', 'Tú solo'];

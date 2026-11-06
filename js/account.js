@@ -1,7 +1,7 @@
 // Tu cuenta: guarda tu avance en el servidor (Vercel + Neon) para usarlo en cualquier dispositivo.
 // Se sincroniza todo lo de localStorage (lecciones, XP, racha, mediciones de tu voz, diagnósticos, recursos…).
 // Las canciones (archivos de audio) se quedan en cada dispositivo: pesan demasiado para subirlas.
-import { load, save, saveHooks, replaceState } from './store.js';
+import { load, save, saveHooks, replaceState, EPOCH } from './store.js';
 
 // Dirección del servidor. Si la app se abre desde Vercel, es el mismo sitio.
 export const API_DEFAULT = 'https://syng-kriss.vercel.app';
@@ -26,7 +26,8 @@ async function call(path, { method = 'GET', body } = {}) {
   return { status: r.status, ...j };
 }
 
-const hasProgress = (d) => d && ((d.xp || 0) > 0 || Object.keys(d.lessons || {}).length > 0 || (d.voiceMaps || []).length > 0);
+const current = (d) => !!d && d.epoch === EPOCH; // avance de esta versión de Syng
+const hasProgress = (d) => current(d) && ((d.xp || 0) > 0 || Object.keys(d.lessons || {}).length > 0 || (d.voiceMaps || []).length > 0);
 
 // Ingresar o crear cuenta. Devuelve {needChoice, server} si ambos lados tienen avance distinto.
 export async function signIn(action, email, password) {
@@ -36,7 +37,7 @@ export async function signIn(action, email, password) {
   const local = load();
   if (srv.data && hasProgress(srv.data) && hasProgress(local)) return { needChoice: true, server: srv };
   if (srv.data && hasProgress(srv.data)) { replaceState(srv.data); return { adopted: true }; }
-  await push(true);
+  await push(true, true);
   return { pushed: true };
 }
 export async function chooseSide(side, server) {
@@ -54,7 +55,8 @@ export async function push(now = false, force = false) {
   try {
     const s = load();
     const r = await call('progress', { method: 'PUT', body: { data: s, updated: s.updatedAt || Date.now(), force } });
-    if (r.status === 409 && r.data) { replaceState(r.data); syncInfo.status = 'pulled'; syncInfo.changed = true; }
+    if (r.status === 409 && r.data && !current(r.data)) { await call('progress', { method: 'PUT', body: { data: s, updated: s.updatedAt || Date.now(), force: true } }); syncInfo.status = 'saved'; }
+    else if (r.status === 409 && r.data) { replaceState(r.data); syncInfo.status = 'pulled'; syncInfo.changed = true; }
     else syncInfo.status = 'saved';
     syncInfo.at = Date.now(); syncInfo.error = null;
   } catch (e) { syncInfo.status = 'error'; syncInfo.error = e.message; }
@@ -66,6 +68,7 @@ export async function pull() {
   try {
     const r = await call('progress');
     const s = load();
+    if (r.data && !current(r.data)) { push(true, true); syncInfo.status = 'saved'; syncInfo.at = Date.now(); emit(); return false; } // avance de la versión anterior: se reemplaza
     if (r.data && r.updated > (s.updatedAt || 0)) { replaceState(r.data); syncInfo.status = 'pulled'; syncInfo.at = Date.now(); emit(); return true; }
     if (!r.data || r.updated < (s.updatedAt || 0)) push(true);
     syncInfo.status = 'saved'; syncInfo.at = Date.now(); emit();

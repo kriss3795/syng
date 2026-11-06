@@ -54,10 +54,12 @@ export async function runFindNote(spec, root, sig) {
     const skip = h('button', { class: 'btn ghost' }, 'Saltar');
     // Ficha "cómo cantarla": nota, sonido, fuerza y duración, siempre a la vista
     const vp = voiceProfile() || {}; const spk = vp.speak ? Math.round(vp.speak) : null; const spkRms = vp.speakRms || 0.04;
-    const ref = vp.comfort != null ? vp.comfort : spk; const refTxt = vp.comfort != null ? 'tu nota cómoda' : 'tu voz al hablar';
-    const rel = ref == null ? '' : target === ref ? ` (justo ${refTxt})` : target > ref ? ` (${target - ref} semitono${target - ref > 1 ? 's' : ''} sobre ${refTxt})` : ` (${ref - target} semitono${ref - target > 1 ? 's' : ''} bajo ${refTxt})`;
+    const refN = vp.comfort != null ? vp.comfort : spk; const refTxt = vp.comfort != null ? 'tu nota cómoda' : 'tu voz al hablar';
+    const rel = '';
+    const relOf = (t) => refN == null ? '' : t === refN ? ` (justo ${refTxt})` : t > refN ? ` (${t - refN} semitono${t - refN > 1 ? 's' : ''} sobre ${refTxt})` : ` (${refN - t} semitono${refN - t > 1 ? 's' : ''} bajo ${refTxt})`;
+    const noteSpan = h('span', {}, noteName(target) + relOf(target));
     const recipe = h('div', { class: 'recipe' },
-      h('div', {}, h('b', {}, '🎵 Nota'), h('span', {}, noteName(target) + rel)),
+      h('div', {}, h('b', {}, '🎵 Nota'), noteSpan),
       h('div', {}, h('b', {}, '👄 Sonido'), h('span', {}, '"uuu" suave, labios redondos')),
       h('div', {}, h('b', {}, '🔊 Fuerza'), h('span', {}, 'como conversando, no susurro ni grito')),
       h('div', {}, h('b', {}, '⏱ Cuánto'), h('span', {}, '1 segundo parejo en la zona verde')));
@@ -67,13 +69,13 @@ export async function runFindNote(spec, root, sig) {
       h('div', { class: 'grow' }), h('div', { class: 'actionbar fn-actions' }, again, help, skip)));
 
     let quietUntil = 0;
-    const play = (m, dur = 1.2) => { if (ref) { const d = playMyVoice(ref, m); quietUntil = c.currentTime + d + 0.4; } else { playNote(m, c.currentTime + 0.05, dur, 0.3); quietUntil = c.currentTime + dur + 0.35; } };
+    const play = (m, dur = 1.2) => { if (ref && isFinite(m) && isFinite(ref.midi)) { const d = playMyVoice(ref, m); quietUntil = c.currentTime + d + 0.4; } else { playNote(m, c.currentTime + 0.05, dur, 0.3); quietUntil = c.currentTime + dur + 0.35; } };
     let skipped = false, askHelp = false;
     again.onclick = () => play(target); skip.onclick = () => (skipped = true); help.onclick = () => (askHelp = true);
 
     // Busca una nota: devuelve {ok, t, octave, first, approach, sd}
     const seek = async (m, maxT, { hint = 0, msg = null } = {}) => {
-      resetSmoother(); play(m);
+      resetSmoother(); play(m); noteSpan.textContent = noteName(m) + relOf(m);
       setCoach(msg || '👂 Escucha la nota… y después cántala.', 'canta');
       let held = 0, lastT = c.currentTime; const t0 = c.currentTime; let tStart = null, first = null, octave = false; const cs = []; const pre = [];
       let lastMsg = '', lastReplay = c.currentTime, prevAbs = null, awayT = 0;

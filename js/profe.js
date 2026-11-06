@@ -23,6 +23,10 @@ export function studentContext() {
     pasaje: m && m.siren && m.siren.passage ? noteName(m.siren.passage) : null,
     recursosNaturales: rt ? rt.results.filter((x) => x.s >= 0.7).map((x) => x.id) : null,
     patrones: A.findings.slice(0, 4).map((f) => `${f.title}: ${String(f.evidence || '').replace(/<[^>]+>/g, '')}`),
+    notaComoda: (s.voice && s.voice.comfort != null) ? noteName(s.voice.comfort) : null,
+    progresoPorHabilidad: Object.fromEntries(Object.entries(s.mastery || {}).map(([k, m]) => [k, 'peldaño ' + (m.level + 1)])),
+    ultimasClases: (s.classLog || []).slice(-5).map((c) => ({ dia: c.day, foco: c.main, de: c.from + 1, a: c.to + 1, voz: c.feel, cancion: c.song, promedio: c.avg })),
+    estrellasCancionero: s.cancionero || {},
   };
 }
 

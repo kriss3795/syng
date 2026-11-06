@@ -21,8 +21,8 @@ const F = () => { const s = load(); s.fun = s.fun || { counts: {}, badges: {}, f
 const QUESTS = {
   xp: { icon: '⚡', label: (n) => `Gana ${n} XP`, targets: [30, 50] },
   afinadas: { icon: '🎯', label: (n) => `Canta ${n} notas afinadas`, targets: [20, 40] },
-  leccion: { icon: '📘', label: (n) => (n === 1 ? 'Completa una lección' : `Completa ${n} lecciones`), targets: [1, 2] },
-  tres: { icon: '⭐', label: () => 'Logra 3 estrellas en una lección', targets: [1] },
+  clase: { icon: '🧑‍🏫', label: () => 'Haz tu clase con el profe', targets: [1] },
+  estrella: { icon: '⭐', label: () => 'Gana una estrella en el cancionero', targets: [1] },
   juego: { icon: '🐦', label: (n) => `Pasa ${n} puertas en Vuelo del Chincol`, targets: [8, 12] },
   cancion: { icon: '🎤', label: () => 'Canta una de tus canciones completa', targets: [1], needsSong: true },
   ganas: { icon: '📣', label: () => 'Supera un ejercicio de "Cantar con ganas"', targets: [1] },
@@ -35,7 +35,7 @@ export function dailyQuests() {
   if (f.qDay !== t) {
     const r = seedRand(Number(t.replace(/-/g, '')));
     const pool = Object.keys(QUESTS).filter((k) => k !== 'xp' && (!QUESTS[k].needsSong || load().lastSong));
-    const picks = ['xp'];
+    const picks = ['xp', 'clase'];
     while (picks.length < 3) { const k = pool[Math.floor(r() * pool.length)]; if (!picks.includes(k)) picks.push(k); }
     f.quests = picks.map((k) => { const T = QUESTS[k].targets; return { k, target: T[Math.floor(r() * T.length)], prog: 0 }; });
     f.qDay = t; f.chest = null; save();
@@ -68,12 +68,12 @@ export const BADGES = [
   { id: 'af500', icon: '🎯', name: 'Oído de oro', desc: '500 notas afinadas' },
   { id: 'af2000', icon: '💎', name: 'Afinación de diamante', desc: '2.000 notas afinadas' },
   { id: 'combo10', icon: '⚡', name: 'Racha de notas', desc: 'Combo de 10 notas afinadas seguidas' },
-  { id: 'tres5', icon: '⭐', name: 'Cinco estrellas triples', desc: '5 lecciones con 3 estrellas' },
-  { id: 'etapa1', icon: '🌱', name: 'Fundamentos', desc: 'Completaste la etapa 1' },
-  { id: 'etapa2', icon: '🌬️', name: 'Voz encendida', desc: 'Completaste la etapa 2' },
-  { id: 'etapa3', icon: '🎼', name: 'Músico', desc: 'Completaste la etapa 3' },
-  { id: 'etapa4', icon: '🚀', name: 'Voz completa', desc: 'Completaste la etapa 4' },
-  { id: 'etapa5', icon: '👑', name: 'Intérprete', desc: 'Completaste el camino' },
+  { id: 'clase1', icon: '🧑‍🏫', name: 'Primera clase', desc: 'Hiciste tu primera clase con el profe' },
+  { id: 'clase10', icon: '📚', name: 'Alumno constante', desc: '10 clases con el profe' },
+  { id: 'melodia', icon: '🎼', name: 'Ya cantas melodías', desc: 'Llegaste al peldaño "Melodía corta" en afinar' },
+  { id: 'cancionero', icon: '⭐', name: 'Primera estrella', desc: 'Ganaste una estrella en el cancionero' },
+  { id: 'solista', icon: '👑', name: 'Solista', desc: 'Cantaste una canción en el nivel "Tú solo"' },
+  { id: 'todas', icon: '🌟', name: 'Repertorio', desc: 'Al menos una estrella en todas las canciones' },
   { id: 'cancion', icon: '🎧', name: 'Mi canción', desc: 'Cantaste una canción tuya completa' },
   { id: 'cancion80', icon: '🌟', name: 'Así se canta', desc: '80% o más en una canción tuya' },
   { id: 'vuelo', icon: '🐦', name: 'Vuelo perfecto', desc: '100% en un nivel de Vuelo del Chincol' },
@@ -100,16 +100,15 @@ export function track(ev, d = {}) {
     unlock('primera');
     const hr = new Date().getHours(); if (hr < 8) unlock('temprano'); if (hr >= 23) unlock('noche');
     if (d.warmup) bump('calentar');
-    if (d.lesson && d.passed) { bump('leccion'); if (d.stars === 3) bump('tres'); }
-    const triple = Object.values(load().lessons || {}).filter((l) => l.stars === 3).length; if (triple >= 5) unlock('tres5');
     const s = load(); if (s.streak >= 3) unlock('racha3'); if (s.streak >= 7) unlock('racha7'); if (s.streak >= 30) unlock('racha30');
-    if (d.stages) d.stages.forEach((n) => unlock('etapa' + n));
     return;
   }
   if (ev === 'exercise' && d.type === 'energy' && d.score >= 0.7) { bump('ganas'); if (d.score >= 0.9) unlock('ganas'); return; }
   if (ev === 'song') { bump('cancion'); unlock('cancion'); if (d.score >= 0.8) unlock('cancion80'); return; }
   if (ev === 'game') { bump('juego', d.passed, 'max'); if (d.pct >= 100) unlock('vuelo'); return; }
   if (ev === 'map') { unlock('mapa'); return; }
+  if (ev === 'clase') { bump('clase'); c.clases = (c.clases || 0) + 1; save(); unlock('clase1'); if (c.clases >= 10) unlock('clase10'); const m = (load().mastery || {}).afinacion; if (m && m.best >= 7) unlock('melodia'); return; }
+  if (ev === 'estrella') { bump('estrella'); unlock('cancionero'); if (d.level >= 3) unlock('solista'); if (d.all) unlock('todas'); return; }
   if (ev === 'chest') { c.cofres = (c.cofres || 0) + 1; save(); if (c.cofres >= 5) unlock('cofre'); }
 }
 

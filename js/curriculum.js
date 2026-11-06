@@ -792,4 +792,4 @@ export function dailyRoutine({ map, findings = [], phrase = null }) {
   return { exercises: out, why, focus };
 }
 const noteNameOf = (m) => ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'][((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
-export { P, glide, seq, match, sustain, ear, fit };
+export { P, glide, seq, match, sustain, ear, fit, breath, rhythm, dyn };

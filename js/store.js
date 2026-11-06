@@ -1,7 +1,9 @@
 // Persistencia: progreso y ajustes en localStorage; canciones (archivos de audio) en IndexedDB.
 
 const KEY = 'syng.v1';
+export const EPOCH = 'syng2';
 const DEFAULT = {
+  epoch: EPOCH, // si el avance guardado en la cuenta es de una versión anterior (antes del reinicio), no se recupera
   settings: { timbre: 'voz', echoCancel: false, latencyMs: 0, songTol: 70, octaveFree: true },
   range: null, // {low, high, comfort}
   lessons: {}, // id -> {stars, best, done}

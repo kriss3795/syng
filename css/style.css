@@ -679,3 +679,32 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .cc-row { display: grid; grid-template-columns: 52px 1fr 28px; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; padding: 2px 6px; border-radius: 10px; }
 .cc-row.in { background: var(--primary-l); }
 .cc-bar { height: 12px; border-radius: 99px; background: var(--line); overflow: hidden; } .cc-bar i { display: block; height: 100%; background: var(--primary); }
+
+/* ================= Syng 2: Hoy, Canta, Profe, Tu voz ================= */
+.clase-card .btn.primary.big { width: 100%; margin-top: 12px; }
+.cc-focus { display: flex; gap: 12px; align-items: center; margin-top: 12px; padding: 12px; border-radius: 16px; background: var(--primary-l); }
+.cc-ic { font-size: 30px; width: 52px; height: 52px; display: grid; place-items: center; background: var(--card); border-radius: 14px; flex: none; }
+.cc-focus b { display: block; font-size: 19px; font-family: var(--display); }
+.cc-plan { margin-top: 8px; color: var(--muted); text-align: center; }
+.goal-card { display: flex; flex-direction: column; gap: 10px; }
+.goal-card .goal { display: flex; align-items: center; gap: 12px; }
+.goal-card .week { margin: 0; }
+.skills-card h3 { margin-top: 0; }
+.sk-row { display: flex; gap: 10px; align-items: center; padding: 8px 0; border-top: 1px solid var(--line); }
+.sk-row:first-of-type { border-top: 0; }
+.sk-row.locked { opacity: .55; }
+.sk-ic { font-size: 22px; width: 32px; text-align: center; flex: none; }
+.sk-main { flex: 1; min-width: 0; }
+.sk-bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 5px; } .sk-bar i { display: block; height: 100%; background: var(--primary); border-radius: 99px; }
+.voice-card h3 { margin-top: 0; }
+.vc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 8px 0 10px; }
+.vc-grid > div { background: var(--paper); border-radius: 14px; padding: 10px 12px; }
+.vc-grid small { display: block; color: var(--muted); font-size: 12px; } .vc-grid b { font-family: var(--display); font-size: 20px; }
+.tools { display: grid; gap: 8px; }
+.tool { display: flex; gap: 12px; align-items: center; text-align: left; font: inherit; color: var(--ink); background: var(--paper); border: 2px solid var(--line); border-radius: 16px; padding: 10px 12px; cursor: pointer; }
+.tool:hover { border-color: var(--primary); }
+.tool-ic { font-size: 22px; width: 36px; text-align: center; flex: none; }
+.tool b { display: block; } .tool small { color: var(--muted); }
+.page.hoy .hero .btn.primary.big { width: 100%; margin-top: 12px; }
+@media (min-width: 700px) { .tools { grid-template-columns: 1fr 1fr; } }
+.acct-link { display: block; margin: 10px auto 0; text-align: center; }
