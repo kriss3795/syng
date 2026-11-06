@@ -73,10 +73,17 @@ export function readPitch() {
   const level = rms(mic.raw);
   mic.dec = decimate(mic.raw, mic.factor, mic.dec);
   let midi = null, clarity = 0;
-  if (level > 0.008) {
+  // Umbral adaptativo: muchos celulares entregan el micrófono MUY bajito (sin control automático de ganancia).
+  // Antes exigía un volumen fijo (0,008) y en esos celulares la voz no se marcaba. Ahora el umbral sigue
+  // el ruido de tu pieza: basta con que tu voz esté claramente sobre ese ruido.
+  if (mic.floor == null) mic.floor = Math.min(level, 0.004);
+  const gate = Math.max(0.0015, Math.min(0.008, mic.floor * 2.5));
+  if (level > gate) {
     const r = mic.detector.detect(mic.dec, mic.sr2, 65, 1100);
-    if (r && r.clarity > 0.85) { midi = freqToMidi(r.freq); clarity = r.clarity; }
+    if (r && r.clarity > 0.8) { midi = freqToMidi(r.freq); clarity = r.clarity; }
   }
+  // el piso de ruido baja rápido y sube muy lento, y solo con ruido (nunca mientras cantas)
+  if (midi == null) mic.floor = level < mic.floor ? mic.floor * 0.8 + level * 0.2 : Math.min(0.004, mic.floor * 0.995 + level * 0.005);
   const smooth = mic.smoother.push(midi);
   return { midi: smooth, raw: midi, rms: level, clarity };
 }

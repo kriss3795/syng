@@ -84,8 +84,8 @@ export async function runFindNote(spec, root, sig) {
         if (now < quietUntil) { tu.update(null, m); tu.setMsg('Escucha…'); arrow.className = 'fn-arrow'; await raf(); continue; }
         const p = readPitch();
         const ratio = p.rms / spkRms; strFill.style.width = Math.min(100, (ratio / 2.5) * 100) + '%';
-        strLbl.textContent = p.rms < 0.004 ? 'Fuerza' : ratio < 0.55 ? 'Muy bajito: más voz' : ratio > 2 ? 'Muy fuerte: afloja' : 'Fuerza: bien ✓';
-        strFill.className = 'str-fill ' + (p.rms < 0.004 ? '' : ratio < 0.55 || ratio > 2 ? 'warn' : 'ok');
+        strLbl.textContent = p.midi == null ? 'Fuerza' : ratio < 0.55 ? 'Muy bajito: más voz' : ratio > 2 ? 'Muy fuerte: afloja' : 'Fuerza: bien ✓';
+        strFill.className = 'str-fill ' + (p.midi == null ? '' : ratio < 0.55 || ratio > 2 ? 'warn' : 'ok');
         if (p.midi == null) {
           tu.update(null, m);
           if (tStart && now - lastReplay > 7 && hint >= 1) { play(m); lastReplay = now; }
