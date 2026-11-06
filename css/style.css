@@ -612,3 +612,24 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
   .stage-dark .lc-row, .stage-dark .chips { flex-wrap: wrap; }
   .party .lyr-cur { font-size: 52px; } .party .lyr-next { font-size: 30px; }
 }
+/* Taller "Encuentra la nota" */
+.fn-wrap { display: flex; align-items: center; gap: 12px; }
+.fn-wrap .tuner { flex: 1; }
+.fn-arrow { flex: none; width: 76px; height: 76px; border-radius: 50%; display: grid; place-items: center; font-size: 38px; font-weight: 900; background: var(--line); color: var(--muted); transition: background .15s, transform .15s; }
+.fn-arrow.up { background: #FFE2D6; color: #D9541E; animation: fnup .8s infinite ease-in-out; }
+.fn-arrow.down { background: #DCEBFF; color: #2E6FD8; animation: fndown .8s infinite ease-in-out; }
+.fn-arrow.ok { background: var(--ok-l, #DDF8EA); color: #178A4C; transform: scale(1.08); }
+@keyframes fnup { 50% { transform: translateY(-5px); } } @keyframes fndown { 50% { transform: translateY(5px); } }
+@media (prefers-reduced-motion: reduce) { .fn-arrow.up, .fn-arrow.down { animation: none; } }
+.fn-actions { flex-wrap: wrap; gap: 8px; }
+.fn-actions .btn { flex: 1 1 auto; }
+.fn-find h3 { margin-top: 0; }
+.fn-item { border-top: 1px solid var(--line); padding: 8px 0; } .fn-item:first-of-type { border-top: 0; }
+.fn-item p { margin: 2px 0; }
+/* Clase con tu profe: la escalera */
+.tutor-ladder { display: grid; gap: 4px; margin: 12px 0; }
+.tl-step { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--muted); padding: 4px 6px; border-radius: 10px; }
+.tl-step span { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--line); font-weight: 800; font-size: 12px; flex: none; }
+.tl-step.done { color: var(--ink); } .tl-step.done span { background: var(--ok-l, #DDF8EA); color: #178A4C; }
+.tl-step.cur { color: var(--ink); font-weight: 800; background: var(--primary-l); } .tl-step.cur span { background: var(--primary); color: #fff; }
+.center-link { display: block; margin: 6px auto 0; text-align: center; }

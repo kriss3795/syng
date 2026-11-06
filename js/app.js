@@ -1,14 +1,18 @@
 import { h, Roll, tuner, pct, sleep, icon, scoreRing } from './ui.js';
-import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf, dailyRoutine } from './curriculum.js';
+import { UNITS, ALL_LESSONS, warmup, extraSession, recommend, applyLevel, LEVEL_NAMES, STAGES, stageOf, dailyRoutine, randomMelody, P, seq, ear } from './curriculum.js';
+import { getMyVoice, captureMyVoice } from './myvoice.js';
 import { run, diagFindings, identityView, registerRunner } from './exercises.js';
 import { runVoiceMap, voiceMapView } from './voicemap.js';
 registerRunner('voicemap', runVoiceMap);
 import { runEnergy } from './energy.js';
 import { askProfe, profeOn, readAloud, stopReading, studentContext } from './profe.js';
 import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } from './account.js';
+import { runFindNote } from './findnote.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
 registerRunner('resources', runResources);
+registerRunner('findnote', runFindNote);
+registerRunner('tutor', runTutor);
 import { phraseExercises } from './songcoach.js';
 import { track, checkLevel, levelOf, dailyQuests, openChest, chestState, weekDots, applyFreeze, freezes, BADGES, badges, toast } from './fun.js';
 import { gameMenu, playGame } from './game.js';
@@ -41,7 +45,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -67,6 +71,8 @@ async function route() {
     if (hsh === 'manual') return manualView();
     if (hsh === 'cuenta') return accountView();
     if (hsh === 'profe-ia') return chatView();
+    if (hsh === 'clase') return session({ title: 'Clase con tu profe', color: 'teal', exercises: [{ type: 'tutor' }], id: 'clase', back: '#aprender', backLabel: 'Volver al inicio' });
+    if (hsh === 'encuentra') return session({ title: 'Encuentra la nota', color: 'teal', exercises: [{ type: 'findnote', n: 6 }], id: 'encuentra', back: '#aprender', backLabel: 'Volver al inicio' });
     if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
     if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
       view.replaceChildren(h('div', { class: 'page' }, h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#perfil') }, icon('back')), h('span', {})), h('h1', {}, 'Tus recursos vocales'), resourcesView(t),
@@ -137,8 +143,9 @@ function homeView() {
     say(greeting, first ? 'feliz' : 'canta', { voice: first ? 'hola' : null, autoplay: false }),
     h('div', { class: 'hero-row' },
       h('div', { class: 'goal' }, scoreRing(goal, 64), h('div', {}, h('b', {}, 'Meta de hoy'), h('div', { class: 'small muted' }, `${s.lastDay === today() ? s.todayXp || 0 : 0} de ${s.dailyGoal} XP`))),
-      next ? h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#hoy'); } }, icon('play', 18), 'Clase de hoy') : h('b', {}, '¡Terminaste el camino! 🏆')),
-    next ? h('div', { class: 'small muted center' }, `Calentamiento corto + "${next.title}" · unos 8 minutos`) : null,
+      h('button', { class: 'btn primary big', onclick: () => { sfx('select'); nav('#clase'); } }, icon('play', 18), 'Clase con tu profe')),
+    h('div', { class: 'small muted center' }, (mastery().afinacion ? `Seguimos donde quedaste: ${LADDER[Math.min(LADDER.length - 1, mastery().afinacion.level)].name.toLowerCase()}.` : 'Se adapta en vivo: si te sale, sube; si cuesta, baja un paso.') + ' Unos 10 minutos.'),
+    next ? h('button', { class: 'linkbtn center-link', onclick: () => { sfx('select'); nav('#hoy'); } }, `O sigue el camino de lecciones: "${next.title}" →`) : null,
     curStage ? h('button', { class: 'stage-chip', onclick: () => nav('#metodo') }, `Etapa ${curStage.n} de ${STAGES.length}: ${curStage.title}`) : null,
     first ? null : h('div', { class: 'week' }, ...weekDots().map((d) => h('div', { class: 'wd' + (d.on ? ' on' : '') + (d.today ? ' today' : '') }, h('span', {}, d.on ? '🔥' : ''), h('small', {}, d.l))), freezes() ? h('div', { class: 'wd frz', title: 'Protectores de racha' }, h('span', {}, '🧊'), h('small', {}, '×' + freezes())) : null),
     h('button', { class: 'btn big sing-now', onclick: () => { sfx('select'); nav('#cantar-ya'); } }, icon('mic', 18), s.lastSong ? 'Cantar ya: tu canción' : 'Cantar ya: 3 minutos'));
@@ -188,7 +195,7 @@ function homeView() {
       h('div', { class: 'path' }, nodes));
   }
   // En celular: todo en una columna. En computador: el camino a la izquierda y tus tarjetas del día a la derecha.
-  const side = [chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  const side = [findCard(), chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
   view.replaceChildren(h('div', { class: 'page home' }, installBanner(), h('div', { class: 'home-hero' }, hero),
     side.length ? h('aside', { class: 'home-side' }, ...side) : null, h('div', { class: 'home-path' }, ...path)));
   const cur = view.querySelector('.node.current');
@@ -456,7 +463,7 @@ function feedbackSheet(stage, res, { fails, easier, canEase, ex = {}, title = ''
         : say(res.score >= 0.7 ? 'Así se hace. Sigamos.' : 'Escucha con atención y vuelve a intentarlo.', v.mood, { voice: v.voice }),
       res.early ? h('p', { class: 'small ok-txt' }, '✨ Te salió tan bien que corté las rondas que faltaban.') : null,
       listenRow(res),
-      profeBox('exercise', { clase: title, ejercicio: plain(ex.title || ex.text || ex.type).slice(0, 220), tipo: ex.type, puntaje: Math.round((res.score || 0) * 100) + '%', resultado: plain(res.detail), problemas: (res.issues || []).slice(0, 3).map((x) => plain(x.text)), desviacionCents: res.cents != null ? Math.round(res.cents) : null, intentoNumero: fails + 1, cortadoPorBuenResultado: !!res.early }),
+      profeBox('exercise', { clase: title, ejercicio: plain(ex.title || ex.text || ex.type).slice(0, 220), tipo: ex.type, puntaje: Math.round((res.score || 0) * 100) + '%', resultado: plain(res.detail), taller: res.taller || undefined, problemas: (res.issues || []).slice(0, 3).map((x) => plain(x.text)), desviacionCents: res.cents != null ? Math.round(res.cents) : null, intentoNumero: fails + 1, cortadoPorBuenResultado: !!res.early }),
       easier ? h('p', { class: 'small muted' }, 'Hiciste la versión más fácil. Cuando te sientas listo, repite la lección completa.') : null,
       h('div', { class: 'actionbar' },
         canEase ? h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('easier'); } }, 'Hacerlo más fácil') : h('button', { class: 'btn', onclick: () => { stopSpeaking(); resolve('again'); } }, icon('repeat', 18), 'Repetir'),
@@ -491,7 +498,8 @@ function gymView() {
       tile('#extra-aire', 'breath', 'Aire parejo', 'Notas largas con barra de aire', 'orange'),
       tile('#extra-dinamica', 'wave', 'Dinámica', 'Crescendo y messa di voce', 'orange'),
       tile('#extra-ganas', 'party', 'Cantar con ganas', 'Energía y proyección, sin gritar', 'orange'),
-      tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal')),
+      tile('#afinador', 'target', 'Afinador libre', 'Tu nota y cents en vivo', 'teal'),
+      tile('#encuentra', 'target', 'Encuentra la nota', 'Taller guiado, sin apuro', 'teal')),
     h('h2', { class: 'sec' }, 'Afinación y oído'),
     h('div', { class: 'tiles' },
       tile('#extra-fina', 'target', 'Afinación fina', 'Notas clavadas y bordón', 'blue'),
@@ -590,7 +598,105 @@ function methodView() {
     h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => nav('#aprender') }, 'Volver al camino'))));
 }
 
+// ---------- Clase con tu profe: una clase que se arma y se adapta EN VIVO ----------
+// Como un profe particular: parte donde quedaste, si algo sale bien sube un peldaño al tiro,
+// si cuesta baja un paso para afirmar, y entre ejercicio y ejercicio te dice qué vio y por qué cambia.
+const shuffle = (a) => a.map((x) => [Math.random(), x]).sort((p, q) => p[0] - q[0]).map((x) => x[1]);
+const pick = (a) => a[Math.floor(Math.random() * a.length)];
+const LADDER = [
+  { name: 'Encontrar la nota, con ayuda paso a paso', make: () => ({ type: 'findnote', n: 3 }) },
+  { name: 'Igualar notas pegadas a tu voz hablada', make: (v) => ({ type: 'match', home: shuffle([0, 1, -1]), tol: 120, hold: 1, voiceRef: v, text: 'Escucha la nota y cántala con "uuu". Están <b>muy cerca de tu voz al hablar</b>: no hay que ir lejos.' }) },
+  { name: 'Igualar notas un poco más lejos', make: (v) => ({ type: 'match', home: shuffle([0, 2, -2, 3]), tol: 90, hold: 1, voiceRef: v, text: 'Ahora las notas están un poco más lejos. Escucha, y llega <b>deslizando</b> si lo necesitas.' }) },
+  { name: 'Escuchar, guardar la nota y entrar directo', make: (v) => ({ type: 'match', home: shuffle([0, 4, -3, 5]), tol: 80, hold: 1.2, delay: 1, imagine: true, voiceRef: v, text: 'Escucha, <b>guarda la nota en tu cabeza</b> un segundo y entra directo a ella, sin buscarla.' }) },
+  { name: 'Dos notas seguidas', make: () => seq(P(pick([[0, 2], [2, 0], [0, 3], [3, 0], [0, -2]])), { mode: 'echo', bpm: 64, tol: 110, ttol: 320, reps: [0, 0, 0], labels: 'none', text: 'Escucha <b>dos notas</b> y repítelas. Piensa: ¿la segunda sube o baja?' }) },
+  { name: 'Tres notas', make: () => seq(P(pick([[0, 2, 4], [4, 2, 0], [0, 2, 0], [0, 4, 2], [2, 0, 2]])), { mode: 'echo', bpm: 68, tol: 105, ttol: 300, reps: [0, 0, 0], labels: 'none', text: 'Ahora <b>tres notas</b>. Escucha el dibujo de la melodía y cópialo.' }) },
+  { name: 'Escala de cinco notas', make: () => seq(P([0, 2, 4, 5, 7, 5, 4, 2, [0, 2]]), { mode: 'along', bpm: 72, tol: 95, reps: [0, 0], labels: 'solf', text: 'La escala de cinco notas: la cantamos <b>juntos</b> primero y después tú solo.' }) },
+  { name: 'Melodía corta', make: () => seq(P(randomMelody(4)), { mode: 'echo', bpm: 76, tol: 95, ttol: 280, reps: [0, 0], labels: 'la', text: 'Una <b>melodía corta</b> nueva. Escucha y repite.' }) },
+  { name: 'Melodía más larga', make: () => seq(P(randomMelody(5)), { mode: 'echo', bpm: 82, tol: 85, ttol: 260, reps: [0, 0], labels: 'la', text: 'Una <b>melodía más larga</b>. Ya estás para esto.' }) },
+  { name: 'Melodía de memoria', make: () => seq(P(randomMelody(6)), { mode: 'echo', bpm: 86, tol: 80, ttol: 240, reps: [0], labels: 'la', text: 'La escuchas <b>una sola vez</b> y la cantas de memoria. Como en una canción de verdad.' }) },
+];
+function mastery() { const s = load(); s.mastery = s.mastery || {}; return s.mastery; }
+function startLevel() {
+  const m = mastery().afinacion; if (m && m.level != null) return Math.max(0, m.level - (Date.now() - (m.at || 0) > 3 * 864e5 ? 1 : 0)); // si pasaron días, parto un peldaño antes
+  const fn = (load().findNote || []).slice(-1)[0];
+  if (fn) return fn.found / Math.max(1, fn.n) < 0.6 ? 0 : 1;
+  return 0;
+}
+async function runTutor(spec, root, sig) {
+  stopSpeaking();
+  let level = startLevel(); const startLv = level;
+  const F = analyze().findings.filter((f) => f.tone !== 'ok');
+  const fn = (load().findNote || []).slice(-1)[0];
+  const lastM = mastery().afinacion;
+  // 1) el profe te saluda y te cuenta el plan
+  const intro = [];
+  if (!lastM) intro.push('Hoy es nuestra primera clase juntos. Vamos a trabajar <b>lo más importante para cantar: encontrar y sostener la nota</b>.');
+  else intro.push(`La clase pasada llegaste hasta <b>${LADDER[Math.min(LADDER.length - 1, lastM.best ?? lastM.level)].name.toLowerCase()}</b>.` + (level < lastM.level ? ' Pasaron unos días, así que partimos un peldaño antes para calentar el oído.' : ' Seguimos desde ahí.'));
+  if (fn && fn.find && fn.find.includes('parteAbajo')) intro.push('Algo que noté: al empezar sueles partir <b>más grave</b> que la nota. Hoy vamos a "apuntar arriba".');
+  else if (F[0]) intro.push(`Algo que noté en ti: <b>${F[0].title.toLowerCase()}</b>. Lo tendré en cuenta.`);
+  intro.push('Funciona así: si algo te sale bien, <b>subimos al tiro</b>; si cuesta, bajamos un paso para afirmarlo. Nada de repetir por repetir.');
+  const introBox = profeOn() ? profeBox('plan', { nivelHoy: LADDER[level].name, nivelAnterior: lastM ? LADDER[Math.min(LADDER.length - 1, lastM.level)].name : null, ultimoTaller: fn || null }) : null;
+  await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say(intro.join(' '), 'hola'), introBox,
+    h('div', { class: 'tutor-ladder' }, ...LADDER.map((l, i) => h('div', { class: 'tl-step' + (i < level ? ' done' : i === level ? ' cur' : '') }, h('span', {}, i + 1), l.name))),
+    h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); getCtx(); res(); } }, 'Empezar la clase')))));
+  if (sig.aborted) return { score: 0 };
+  // 2) tu propia voz como modelo (una sola vez)
+  let myV = await getMyVoice();
+  if (!myV && !spec.noVoice) { myV = await captureMyVoice(root, sig); if (sig.aborted) return { score: 0 }; }
+  // 3) calentamiento corto
+  for (const w of warmup(true).slice(0, 1)) { await run(w, root, sig); if (sig.aborted) return { score: 0 }; }
+  // 4) la escalera, adaptándose en vivo
+  const log = []; let best = level, streakHard = 0; let i = 0; const MAX = spec.max || 8; const t0 = Date.now(); let earDone = false;
+  while (i < MAX && !sig.aborted && Date.now() - t0 < 15 * 60e3) {
+    const step = LADDER[level];
+    const ex = { ...step.make(myV), _sid: 'clase', _pos: i };
+    let res = null;
+    try { res = await run(ex, root, sig); } catch (e) { console.error(e); res = { score: null, skipped: true }; }
+    if (sig.aborted) break;
+    i++;
+    if (!res || res.score == null || res.skipped) continue;
+    const sc = res.score; log.push({ level, name: step.name, score: sc });
+    let decision, mood, txt;
+    if (sc >= 0.85 && level < LADDER.length - 1) { level++; streakHard = 0; decision = 'up'; mood = 'celebra'; txt = `¡Eso! <b>${Math.round(sc * 100)}%</b>. No hace falta repetirlo: <b>subimos un peldaño</b> → ${LADDER[level].name.toLowerCase()}.`; }
+    else if (sc >= 0.85) { decision = 'top'; mood = 'celebra'; txt = '¡Llegaste a lo más alto de la escalera de hoy! Lo que sigue es aplicarlo en una canción.'; }
+    else if (sc >= 0.55) { streakHard = 0; decision = 'same'; mood = 'feliz'; txt = `Bien encaminado (<b>${Math.round(sc * 100)}%</b>). Una vez más en este peldaño, con notas distintas, y si sale subimos.`; }
+    else {
+      streakHard++;
+      if (level > 0) { level--; decision = 'down'; mood = 'piensa'; txt = `Esto costó (<b>${Math.round(sc * 100)}%</b>), y es normal. <b>Bajamos un paso</b> para afirmar la base: ${LADDER[level].name.toLowerCase()}. Así se aprende de verdad.`; }
+      else { decision = 'stay'; mood = 'piensa'; txt = 'Esto está costando. Vamos con calma: te voy a ayudar más en cada nota.'; }
+    }
+    best = Math.max(best, level);
+    // si te mueves al revés de la guía, un minijuego de oído antes de seguir
+    const dirIssue = (res.issues || []).some((x) => x.key === 'direccion');
+    await new Promise((ok) => root.replaceChildren(h('div', { class: 'ex' },
+      say(txt, mood),
+      (res.issues || []).slice(0, 1).map((x) => h('p', { class: 'small', html: '🔎 ' + x.text + (x.tip ? '<br>👉 ' + x.tip : '') }))[0] || null,
+      listenRow(res),
+      profeBox('exercise', { clase: 'Clase con tu profe', ejercicio: step.name, puntaje: Math.round(sc * 100) + '%', resultado: plain(res.detail), problemas: (res.issues || []).slice(0, 3).map((x) => plain(x.text)), decisionDelProfe: decision, siguiente: LADDER[level].name, taller: res.taller || undefined }),
+      h('div', { class: 'grow' }),
+      h('div', { class: 'actionbar' }, h('button', { class: 'btn ghost', onclick: () => ok('end') }, 'Terminar aquí'), h('button', { class: 'btn primary big', onclick: () => { sfx('select'); ok(); } }, decision === 'top' ? 'Una más' : 'Seguir'))))).then((v) => { if (v === 'end') i = MAX; });
+    if (dirIssue && !earDone) { earDone = true; await run({ ...ear('updown'), text: 'Un minijuego rápido de oído: <b>¿la segunda nota es más aguda o más grave?</b> Saberlo es lo que te dice hacia dónde mover la voz.' }, root, sig); }
+    if (streakHard >= 3 && level === 0) break;
+  }
+  const s = load(); s.mastery = s.mastery || {};
+  s.mastery.afinacion = { level, best: Math.max(best, (lastM && lastM.best) || 0), at: Date.now(), hist: [...((lastM && lastM.hist) || []), { at: Date.now(), from: startLv, to: level, n: log.length }].slice(-30) };
+  save();
+  const avg = log.length ? log.reduce((a, b) => a + b.score, 0) / log.length : 0;
+  const ups = level - startLv;
+  await new Promise((ok) => root.replaceChildren(h('div', { class: 'ex' },
+    say(ups > 0 ? `<b>Subiste ${ups} peldaño${ups > 1 ? 's' : ''} hoy.</b> Empezaste en "${LADDER[startLv].name.toLowerCase()}" y llegaste a "${LADDER[level].name.toLowerCase()}". ¡Así se avanza!` : ups < 0 ? 'Hoy afirmamos la base, que es lo que más rinde a la larga. La próxima clase partimos desde aquí.' : 'Hoy consolidamos este peldaño. La próxima clase intentamos subir.', ups > 0 ? 'celebra' : 'feliz'),
+    h('div', { class: 'tutor-ladder' }, ...LADDER.map((l, k) => h('div', { class: 'tl-step' + (k < level ? ' done' : k === level ? ' cur' : '') }, h('span', {}, k + 1), l.name))),
+    profeBox('lesson', { clase: 'Clase con tu profe (afinación)', peldañoInicio: LADDER[startLv].name, peldañoFinal: LADDER[level].name, ejercicios: log.map((x) => ({ peldaño: x.name, puntaje: Math.round(x.score * 100) + '%' })) }),
+    h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => ok() }, 'Terminar la clase')))));
+  return { score: avg, info: true, detail: `Clase: del peldaño ${startLv + 1} al ${level + 1}.` };
+}
+
 // ---------- Habla con tu profe (IA) ----------
+function findCard() {
+  const fh = load().findNote || []; const last = fh[fh.length - 1];
+  return h('button', { class: 'card rec find-card', onclick: () => { sfx('select'); nav('#encuentra'); } }, h('div', { class: 'card-ic' }, '🎯'),
+    h('div', {}, h('b', {}, 'Encuentra la nota'), h('div', { class: 'small muted' }, last ? `Última vez: ${last.found} de ${last.n}` + (last.avgT != null ? `, ${last.avgT.toFixed(1)} s promedio. ¡A mejorar ese tiempo!` : '.') : 'Taller sin apuro: buscas cada nota con calma y te guío paso a paso hasta encontrarla.')), icon('chevron'));
+}
 function chatCard() {
   return h('button', { class: 'card rec chat-card', onclick: () => { sfx('select'); nav('#profe-ia'); } }, chincol('hola', 48),
     h('div', {}, h('b', {}, 'Habla con tu profe'), h('div', { class: 'small muted' }, 'Pregúntale lo que quieras: por qué te pasa algo, cómo mejorarlo o qué practicar hoy.')), icon('chevron'));

@@ -239,7 +239,11 @@ export async function runMatch(spec, root, sig) {
     // mientras suena la nota de referencia no se evalúa (el micrófono podría captarla)
     const play = () => {
       if (spec.playBuf) { const src = c.createBufferSource(); src.buffer = spec.playBuf; const g = c.createGain(); g.gain.value = 1.6; src.connect(g).connect(c.destination); src.start(c.currentTime + 0.05); heardUntil = c.currentTime + spec.playBuf.duration + 0.3; }
-      else { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; }
+      else if (spec.voiceRef && spec.voiceRef.buf) { // tu propia voz como modelo (más fácil de imitar que un tono de piano)
+        const src = c.createBufferSource(); src.buffer = spec.voiceRef.buf; src.playbackRate.value = 2 ** ((target - spec.voiceRef.midi) / 12);
+        const g = c.createGain(); g.gain.value = 1.5; src.connect(g).connect(c.destination); src.start(c.currentTime + 0.05);
+        heardUntil = c.currentTime + 0.3 + spec.voiceRef.buf.duration / src.playbackRate.value;
+      } else { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; }
       quietUntil = heardUntil + delay;
     };
     play();

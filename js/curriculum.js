@@ -122,6 +122,7 @@ export const UNITS = [
       { type: 'match', home: [0], tol: 140, hold: 1, text: 'Di <b>"hola"</b> como hablando, y alarga la "a": <b>"holaaa"</b>, en tu nota de casa. Esa nota sostenida ya es cantar.' },
       { type: 'match', home: [0, 2, -1], tol: 120, hold: 1 },
     ] },
+    { id: 'encfn', title: 'Encuentra la nota', intro: 'Un taller sin apuro: buscas cada nota con calma y, si no aparece, te ayudo paso a paso.', build: () => [{ type: 'findnote', n: 5 }] },
     { id: 'encid', title: 'El mapa de tu voz', once: true, build: () => [
       tec('tec_mapa', 'El mapa de tu voz'),
       { type: 'voicemap' },
@@ -772,7 +773,7 @@ export function dailyRoutine({ map, findings = [], phrase = null }) {
   const FOCUS = {
     ataque: [seq([{ s: 0, d: 1 }, { s: null, d: 1 }, { s: 4, d: 1 }, { s: null, d: 1 }, { s: 7, d: 1 }, { s: null, d: 1 }, { s: 4, d: 2 }], { mode: 'echo', atHome: true, bpm: 80, tol: 90, ttol: 160, labels: 'a', reps: [0, 0], text: '<b>Foco de hoy: el ataque.</b> Cada "a" empieza limpia: ni golpe ni aire antes.' }), 'Ataque limpio'],
     aire: [sustain([0, 2], { secs: 8, tol: 80, text: '<b>Foco de hoy: el aire.</b> Notas largas de 8 segundos, parejas hasta el final.' }), 'Aire largo y parejo'],
-    afinacion: [match([0, 4, 2, 5], { tol: 70, hold: 1.2, delay: 1, text: '<b>Foco de hoy: afinar.</b> Escucha, imagina la nota y entra directo al centro.' }), 'Afinar al centro'],
+    afinacion: [{ type: 'findnote', n: 4 }, 'Encontrar la nota (taller)'],
     energia: [{ type: 'energy', home: [0, 3], goal: 1.2, secs: 3, syl: 'hey', text: '<b>Foco de hoy: cantar con ganas.</b> Pasa la rayita de tu voz hablada, sin gritar.' }, 'Cantar con ganas'],
     apoyo: [dyn([0, 4], 'swell', { secs: 7, tol: 70, text: '<b>Foco de hoy: el apoyo.</b> Crece y vuelve a lo suave sin que la nota se mueva ni se caiga.' }), 'Apoyo y control'],
   };
@@ -791,3 +792,4 @@ export function dailyRoutine({ map, findings = [], phrase = null }) {
   return { exercises: out, why, focus };
 }
 const noteNameOf = (m) => ['Do', 'Do#', 'Re', 'Re#', 'Mi', 'Fa', 'Fa#', 'Sol', 'Sol#', 'La', 'La#', 'Si'][((m % 12) + 12) % 12] + (Math.floor(m / 12) - 1);
+export { P, glide, seq, match, sustain, ear, fit };

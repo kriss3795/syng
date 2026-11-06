@@ -19,6 +19,7 @@ Reglas:
 const TASK = {
   exercise: 'Comenta el intento que acaba de hacer en este ejercicio, en 2 a 4 frases (máximo 70 palabras): qué salió bien (específico), la UNA cosa más importante a mejorar y cómo hacerlo en el próximo intento. Si el puntaje es 85% o más, felicita y dile que pase al siguiente (no que repita).',
   lesson: 'Cierra la clase en 3 a 5 frases (máximo 90 palabras): qué aprendió hoy, cómo le fue según los datos, en qué se nota que avanzó (si hay datos para decirlo) y qué practicar mañana.',
+  plan: 'Saluda al alumno al empezar la clase y dile en 2 o 3 frases (máximo 55 palabras) qué van a trabajar hoy y por qué, según los datos (su peldaño, lo que le costó antes). Motívalo con algo concreto. No repitas los números exactos.',
   chat: 'Responde la pregunta del alumno como su profe, en máximo 140 palabras, usando lo que sabes de su voz (en los datos) cuando sirva. Si pide un ejercicio, describe uno concreto, paso a paso y corto, que pueda hacer ahora mismo.',
 };
 
