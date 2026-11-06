@@ -14,7 +14,7 @@ import { sfx, stopSpeaking } from './voice.js';
 import { ensureMic, raf } from './exercises.js';
 import { getMyVoice, playMyVoice } from './myvoice.js';
 
-const TOL = 80; // zona verde ±40 cents: exigente pero alcanzable para empezar
+let TOL = 80; // zona verde ±40 cents al empezar; se abre a ±60 si quedas siempre un poco corrido (como haría un profe)
 const fold = (c) => { while (c > 600) c -= 1200; while (c < -600) c += 1200; return c; };
 const mean = (a) => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
 const med = (a) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)]; };
@@ -37,12 +37,21 @@ export async function runFindNote(spec, root, sig) {
     prev ? h('p', { class: 'small muted' }, `La vez pasada encontraste ${prev.found} de ${prev.n} notas, en ${prev.avgT != null ? prev.avgT.toFixed(1) + ' s' : '—'} en promedio.`) : null,
     h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); getCtx(); res(); } }, 'Empezar')))));
   if (!(await ensureMic(root))) return { score: 0 };
+  TOL = spec.tol || 80; const allC = []; let widened = false;
   const c = getCtx();
   const ref = spec.pianoOnly ? null : await getMyVoice();
   const stats = []; let wrongDir = 0;
 
   for (let i = 0; i < targets.length && !sig.aborted; i++) {
     let target = targets[i];
+    // Si las 2 primeras no salieron y siempre quedas corrido para el mismo lado, abro la zona: primero acercarse, después afinar fino
+    if (i === 2 && !widened && stats.filter((x) => x.ok).length === 0 && allC.length > 30) {
+      const sorted = [...allC].sort((a, b) => a - b); const md = sorted[sorted.length >> 1];
+      if (Math.abs(md) > 25) {
+        widened = true; TOL = 150;
+        await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say(`Noté algo importante: <b>siempre quedas un poquito ${md < 0 ? 'bajo' : 'alto'}</b> (unos ${Math.round(Math.abs(md))} cents, menos de medio semitono). ¡Estás cerca! Voy a <b>abrir un poco la zona verde</b> para que sientas cuándo llegas, y después la vamos achicando. Truco: ${md < 0 ? 'piensa la nota <b>más arriba</b> de lo que crees y dale un poquito más de aire.' : 'canta <b>más suave y relajado</b>: la nota está más abajo de lo que crees.'}`, 'piensa'), h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => res() }, 'Seguir')))));
+      }
+    }
     const tu = tuner(TOL); tu.setTol(TOL);
     const coachBox = h('div'); const setCoach = (t, mood = 'atento') => coachBox.replaceChildren(say(t, mood, { compact: true }));
     const arrow = h('div', { class: 'fn-arrow' });
@@ -101,6 +110,7 @@ export async function runFindNote(spec, root, sig) {
         if (now - tStart < 0.6) pre.push(raw);
         // ¿te alejas de la nota mientras te guío? (posible confusión arriba/abajo)
         const ab = Math.abs(raw); if (prevAbs != null && hint >= 1 && ab > 150) { if (ab > prevAbs + 2) awayT += dt; else awayT = Math.max(0, awayT - dt * 0.5); } prevAbs = ab;
+        if (Math.abs(cents) < 250) allC.push(cents);
         const inT = Math.abs(cents) <= TOL / 2;
         arrow.className = 'fn-arrow ' + (inT ? 'ok' : cents < 0 ? 'up' : 'down');
         arrow.textContent = inT ? '✓' : cents < 0 ? '▲' : '▼';
@@ -189,13 +199,15 @@ export async function runFindNote(spec, root, sig) {
   if (weak.length && strong.length) find.push({ k: 'zona', t: `Encuentras mejor las notas de tu zona <b>${strong.join(' y ')}</b>; te cuestan más las de la zona <b>${weak.join(' y ')}</b>.`, tip: 'Entrena primero donde te va bien y ve abriendo hacia la otra zona de a un semitono.' });
   if (wrongDir >= 2) find.push({ k: 'direccion', t: 'Algunas veces, al guiarte, te moviste <b>en la dirección contraria</b>.', tip: 'Puede ser que todavía confundas "más agudo" con "más grave". Lo entrenamos con el juego "¿Arriba o abajo?" de Oído.' });
   const stab = stats.map((s) => s.sd).filter((x) => x != null); if (stab.length >= 2 && mean(stab) > 18) find.push({ k: 'tiembla', t: 'Cuando la encuentras, la nota <b>tiembla</b> un poco.', tip: 'Es el aire: haz el siseo "sss" parejo y canta con ese mismo soplo constante.' });
-  const record = { at: Date.now(), n: stats.length, found, direct: direct.length, avgT, bias, find: find.map((f) => f.k) };
+  const sortedC = [...allC].sort((a, b) => a - b); const medC = sortedC.length > 30 ? sortedC[sortedC.length >> 1] : null;
+  if (medC != null && Math.abs(medC) > 25 && !find.some((f) => f.k === 'parteAbajo' || f.k === 'parteArriba')) find.unshift({ k: medC < 0 ? 'bajo' : 'alto', t: `Cuando cantas, <b>quedas siempre un poquito ${medC < 0 ? 'bajo' : 'alto'}</b> (≈${Math.round(Math.abs(medC))} cents; un semitono son 100).`, tip: medC < 0 ? 'Es lo más común. Piensa la nota "más arriba", mantén el aire parejo y no dejes caer la mandíbula ni el ánimo al final.' : 'Suele ser por empujar. Canta más suave y relajado, como un suspiro con sonido.' });
+  const record = { at: Date.now(), n: stats.length, found, direct: direct.length, avgT, bias: medC, find: find.map((f) => f.k), widened };
   const s = load(); s.findNote = [...(s.findNote || []), record].slice(-30); save();
   const better = prev && prev.avgT != null && avgT != null && avgT < prev.avgT - 0.4;
 
   await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' },
     say(`<b>Encontraste ${found} de ${stats.length} notas</b>` + (direct.length ? `, ${direct.length} sin ayuda` : '') + (avgT != null ? ` (en ${avgT.toFixed(1)} s en promedio)` : '') + '.' + (better ? ` ¡Más rápido que la vez pasada (${prev.avgT.toFixed(1)} s)!` : ''), found >= stats.length * 0.7 ? 'celebra' : 'feliz'),
-    find.length ? h('div', { class: 'card fn-find' }, h('h3', {}, 'Lo que noté en ti'), ...find.map((f) => h('div', { class: 'fn-item' }, h('p', { html: '🔎 ' + f.t }), h('p', { class: 'small', html: '👉 ' + f.tip })))) : h('p', { class: 'small muted' }, 'No noté errores repetidos: ¡vas bien!'),
+    find.length ? h('div', { class: 'card fn-find' }, h('h3', {}, 'Lo que noté en ti'), ...find.map((f) => h('div', { class: 'fn-item' }, h('p', { html: '🔎 ' + f.t }), h('p', { class: 'small', html: '👉 ' + f.tip })))) : h('p', { class: 'small muted' }, found >= stats.length * 0.6 ? 'No noté errores repetidos: ¡vas bien!' : 'Hoy costó, y es parte del proceso: cada intento entrena el camino entre tu oído y tu voz.'),
     h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => res() }, 'Seguir')))));
   return { score: found / Math.max(1, stats.length), detail: `Encontraste ${found} de ${stats.length} notas` + (avgT != null ? `, en ${avgT.toFixed(1)} s promedio sin ayuda.` : '.'),
     issues: find.map((f) => ({ key: f.k, text: f.t, tip: f.tip })), taller: { ...record, zonas: zones, notas: stats.map((x) => ({ nota: noteName(x.target), ok: x.ok, ayuda: x.level, seg: x.t != null ? +x.t.toFixed(1) : null, partio: x.first != null ? Math.round(x.first) + ' cents' : null })) } };

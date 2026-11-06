@@ -260,7 +260,7 @@ async function session({ title, color, exercises, id, lesson, level = 2, next, i
       h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { stopSpeaking(); sfx('select'); res(); } }, 'Vamos')))));
   }
   const scores = [], metrics = { cents: [], timing: [] }, issueKeys = [];
-  let worst = null; const toReview = [];
+  let worst = null; const toReview = []; let classScore = null;
   for (let i = 0; i < exercises.length; i++) {
     if (mySig.aborted) return;
     fill.style.width = (i / exercises.length) * 100 + '%';
@@ -282,6 +282,7 @@ async function session({ title, color, exercises, id, lesson, level = 2, next, i
         res = { score: null, skipped: true };
       }
       if (mySig.aborted) return;
+      if (res.info && id === 'clase' && typeof res.score === 'number') classScore = res.score;
       if (res.info || res.skipped || ex.noScore) break;
       if (res.score < 0.7) fails++;
       const decision = await feedbackSheet(stage, res, { fails, easier, canEase: fails >= 2 && !easier && canMakeEasier(ex), ex, title });
@@ -315,7 +316,7 @@ async function session({ title, color, exercises, id, lesson, level = 2, next, i
   }
   fill.style.width = '100%';
   if (exercises.some((e) => e.noScore) || id === 'warmup') { load().lastWarmup = today(); save(); }
-  const score = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : 1;
+  const score = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : classScore ?? 1;
   const avgC = metrics.cents.length ? metrics.cents.reduce((a, b) => a + b, 0) / metrics.cents.length : null;
   const hadStreak = load().lastDay === today();
   record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null, issues: issueKeys });
@@ -324,19 +325,19 @@ async function session({ title, color, exercises, id, lesson, level = 2, next, i
   // Si el nivel 1 te salió excelente, no te hago repetir la lección: te salto el nivel 2.
   const skipped = false; const moreLevels = false;
   if (id === 'bienvenida') { const s0 = load(); s0.onboarded = Date.now(); save(); }
-  const passed = !lesson || stars > 0;
+  const passed = id === 'clase' || id === 'bienvenida' ? true : score >= 0.5;
   const xp = passed ? Math.round(10 + score * 15) : 5;
   addXp(xp);
   track('session', { lesson: !!lesson, passed, stars, warmup: exercises.some((e) => e.noScore) || id === 'warmup', });
   if (id === 'mapa' || exercises.some((e) => e.type === 'voicemap')) track('map');
   renderHeader();
-  if (passed) { sfx('done'); confetti(); }
+  if (passed && score >= 0.5) { sfx('done'); confetti(); }
   const s = load();
   const after = analyze();
   const fresh = after.n > before.n ? newFindings(before.findings, after.findings).slice(0, 2) : [];
   stage.replaceChildren(h('div', { class: 'ex done-screen' },
     h('div', { class: 'center' }, chincol(passed ? 'celebra' : 'piensa', 120)),
-    h('h1', { class: 'center' }, passed ? (moreLevels ? `¡Nivel ${level} listo!` : lesson && level === 3 ? '¡Maestría!' : lesson ? '¡Lección completada!' : '¡Sesión terminada!') : 'Casi… todavía no'),
+    h('h1', { class: 'center' }, id === 'clase' ? '¡Clase terminada!' : id === 'bienvenida' ? '¡Ya te conozco!' : passed ? '¡Sesión terminada!' : 'Casi… todavía no'),
     moreLevels ? h('p', { class: 'center' }, `Ahora la misma lección en el nivel ${level + 1}: ${LEVEL_NAMES[level + 1].toLowerCase()}. Repetir es lo que afirma la nota en tu oído.`) : null,
     skipped ? h('p', { class: 'center' }, '¡Te salió excelente! Te salto el nivel 2: no tiene sentido repetir lo que ya dominas.') : null,
     lesson || scores.length >= 2 ? profeBox('lesson', { clase: title, puntajePromedio: Math.round(score * 100) + '%', ejercicios: scores.length, aprobada: passed, nivel: level, saltoDeNivel: !!skipped, problemasFrecuentes: [...new Set(issueKeys)].slice(0, 4), desviacionPromedioCents: avgC != null ? Math.round(avgC) : null }) : null,

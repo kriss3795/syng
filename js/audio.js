@@ -67,6 +67,8 @@ export const micStream = () => (mic ? mic.stream : null);
 // Lee el tono actual. Devuelve {midi (suavizado), raw, rms, clarity} ; midi = null si no hay voz clara.
 export function readPitch() {
   if (!mic) return { midi: null, rms: 0 };
+  // Solo para pruebas automáticas: un "cantante virtual" (window.__singer) reemplaza al micrófono. En la app real no existe.
+  if (window.__singer) { const m = window.__singer(); return { midi: m, raw: m, rms: m == null ? 0.0006 : 0.02, clarity: m == null ? 0 : 0.95 }; }
   // mientras el Chincol habla, no se escucha al usuario (su voz confundiría al detector)
   if (document.body.classList.contains('speaking')) { mic.smoother.push(null); return { midi: null, raw: null, rms: 0, clarity: 0 }; }
   mic.analyser.getFloatTimeDomainData(mic.raw);
@@ -93,6 +95,7 @@ export function resetSmoother() { if (mic) mic.smoother.reset(); }
 // Timbre "voz": diente de sierra filtrado con formantes de vocal "a"/"u". Investigación: imitar un timbre vocal es más fácil que un tono sintético puro.
 export function playNote(midi, when = 0, dur = 0.8, gain = 0.25, dest = null) {
   const c = getCtx();
+  if (window.__singer) window.__heard = { m: midi, t: Math.max(c.currentTime, when || 0), d: dur };
   const t = Math.max(c.currentTime, when || c.currentTime);
   const f = midiToFreq(midi);
   const out = c.createGain();

@@ -246,7 +246,8 @@ export async function runMatch(spec, root, sig) {
       else if (spec.voiceRef && spec.voiceRef.buf) { // tu propia voz como modelo (más fácil de imitar que un tono de piano)
         const src = c.createBufferSource(); src.buffer = spec.voiceRef.buf; src.playbackRate.value = 2 ** ((target - spec.voiceRef.midi) / 12);
         const g = c.createGain(); g.gain.value = 1.5; src.connect(g).connect(c.destination); src.start(c.currentTime + 0.05);
-        heardUntil = c.currentTime + 0.3 + spec.voiceRef.buf.duration / src.playbackRate.value;
+        heardUntil = c.currentTime + 0.3 + Math.min(3, spec.voiceRef.buf.duration / src.playbackRate.value);
+        if (window.__singer) window.__heard = { m: target, t: c.currentTime, d: 1.2 };
       } else { playNote(target, c.currentTime + 0.05, 1.1, 0.28); heardUntil = c.currentTime + 1.35; }
       quietUntil = heardUntil + delay;
     };
@@ -515,6 +516,7 @@ async function runSeq(spec, root, sig) {
     all.push({ t: now, m: p.midi, raw: p.raw });
     let active = null;
     for (const tg of scored) if (now >= tg.t0 && now <= tg.t1) active = tg;
+    if (window.__singer) window.__seqT = active ? active.m0 + (active.m1 - active.m0) * Math.min(1, Math.max(0, (now - active.t0) / (active.t1 - active.t0))) : null;
     let ok = null;
     if (active) {
       if (p.midi != null) {
@@ -571,6 +573,7 @@ async function runSeq(spec, root, sig) {
     status.textContent = cue ? '👂 ' + cue.txt : liveTip && cur && !cur.demo ? liveTip.txt : mode === 'read' && now < tonicEnd ? 'Escucha el do: esa es tu casa' : now < musicStart && !cur ? 'Cuenta… 1, 2, 3, 4' : cur ? (cur.demo ? (mode === 'echo' ? 'Escucha cómo lo canto' : 'Canta juntos conmigo') : 'Tu turno: canta “' + (cur.label || noteName(cur.m0)) + '”') : (mode === 'echo' ? 'Prepárate para repetir…' : '¡Sigue tú!');
     await raf();
   }
+  if (window.__singer) window.__seqT = undefined;
   const take = recorder ? await recorder.stop() : null;
   if (earlyStop != null) { scored.splice(0, scored.length, ...scored.filter((tg) => !tg.skip)); }
   // ---- evaluar ----

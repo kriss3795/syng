@@ -62,7 +62,7 @@ export async function runComfort(spec, root, sig) {
   if (sig.aborted || !per.length) return { score: 0 };
   // la zona cómoda: el tramo de 3 notas seguidas con mejor puntaje
   let best = null;
-  for (let i = 0; i < per.length; i++) { const w = per.slice(i, i + 3); if (w.length < Math.min(3, per.length)) break; const sc = w.reduce((a, b) => a + b.score, 0) / w.length; if (!best || sc > best.sc) best = { sc, lo: w[0].m, hi: w[w.length - 1].m, mid: w[Math.floor(w.length / 2)].m }; }
+  for (let i = 0; i < per.length; i++) { const w = per.slice(i, i + 3); if (w.length < Math.min(3, per.length)) break; const sc = w.reduce((a, b) => a + b.score, 0) / w.length - 0.01 * Math.abs(w[Math.floor(w.length / 2)].m - (spk + 3)); if (!best || sc > best.sc) best = { sc, lo: w[0].m, hi: w[w.length - 1].m, mid: w[Math.floor(w.length / 2)].m }; }
   const comfort = best.mid; const diff = comfort - spk;
   setVoiceProfile({ comfort, comfortLo: best.lo, comfortHi: best.hi, comfortAt: Date.now() });
   await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' },

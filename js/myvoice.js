@@ -72,7 +72,8 @@ export async function captureMyVoice(root, sig) {
   } catch (e) { console.warn(e); return null; }
 }
 export function playMyVoice(ref, midi, when = 0) {
-  const c = getCtx(); const src = c.createBufferSource(); src.buffer = ref.buf; src.playbackRate.value = 2 ** ((midi - ref.midi) / 12);
+  const c = getCtx();
+  if (window.__singer) window.__heard = { m: midi, t: c.currentTime + when, d: 1.2 }; const src = c.createBufferSource(); src.buffer = ref.buf; src.playbackRate.value = 2 ** ((midi - ref.midi) / 12);
   const g = c.createGain(); g.gain.value = 1.5; src.connect(g).connect(c.destination); src.start(c.currentTime + 0.05 + when);
   return ref.buf.duration / src.playbackRate.value;
 }

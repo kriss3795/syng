@@ -23,7 +23,7 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 // ---------- Las habilidades y sus escaleras ----------
 export const SKILLS = {
   afinacion: { name: 'Afinar', icon: '🎯', why: 'Encontrar y sostener la nota: la base de todo.', steps: [
-    { name: 'Encontrar la nota, con ayuda paso a paso', make: () => ({ type: 'findnote', n: 3 }) },
+    { name: 'Encontrar la nota, con ayuda paso a paso', make: () => { const f = (load().findNote || []).slice(-1)[0]; return { type: 'findnote', n: 3, tol: f && f.widened && f.found / Math.max(1, f.n) < 0.7 ? 150 : 80 }; } },
     { name: 'Igualar notas pegadas a tu nota cómoda', make: (v) => ({ type: 'match', home: shuffle([0, 1, -1]), tol: 120, hold: 1, voiceRef: v, text: 'Escucha la nota y cántala con "uuu". Están <b>muy cerca de tu nota cómoda</b>: no hay que ir lejos.' }) },
     { name: 'Igualar notas un poco más lejos', make: (v) => ({ type: 'match', home: shuffle([0, 2, -2, 3]), tol: 90, hold: 1, voiceRef: v, text: 'Ahora las notas están un poco más lejos. Escucha y llega <b>deslizando</b> si lo necesitas.' }) },
     { name: 'Escuchar, guardar la nota y entrar directo', make: (v) => ({ type: 'match', home: shuffle([0, 4, -3, 5]), tol: 80, hold: 1.2, delay: 1, imagine: true, voiceRef: v, text: 'Escucha, <b>guarda la nota en tu cabeza</b> un segundo y entra directo a ella.' }) },
@@ -138,7 +138,7 @@ export async function runClase(spec, root, sig) {
   // 3) calentamiento corto
   for (const w of warmup(true).slice(0, feel === 'ronca' ? 1 : 2)) { await run({ ...w, noScore: true }, root, sig); if (sig.aborted) return { score: 0 }; }
   // 4) foco del día: la escalera, adaptándose en vivo
-  const log = []; let i = 0; let earDone = false; let caeDone = false; let steadyDone = false; let stop = false;
+  const log = []; let i = 0; let earDone = false; let caeDone = false; let steadyDone = false; let stop = false; let hardAtBase = 0;
   while (i < MAX && !sig.aborted && !stop) {
     const step = S.steps[level];
     const ex = { ...step.make(myV), _sid: 'clase', _pos: i };
@@ -154,7 +154,7 @@ export async function runClase(spec, root, sig) {
     else if (sc >= 0.85) { decision = 'cima'; mood = 'celebra'; txt = '¡Llegaste a lo más alto de esta escalera! Lo que sigue es aplicarlo en canciones.'; }
     else if (sc >= 0.55) { decision = 'repite'; mood = 'feliz'; txt = `Bien encaminado (<b>${Math.round(sc * 100)}%</b>). Una vez más en este peldaño, con algo distinto, y si sale subimos.`; }
     else if (level > 0) { level--; decision = 'baja'; mood = 'piensa'; txt = `Esto costó (<b>${Math.round(sc * 100)}%</b>), y es normal. <b>Bajamos un paso</b> para afirmar la base: ${S.steps[level].name.toLowerCase()}.`; }
-    else { decision = 'apoyo'; mood = 'piensa'; txt = 'Esto está costando. Vamos con calma: te ayudo más en cada nota.'; }
+    else { decision = 'apoyo'; mood = 'piensa'; hardAtBase++; txt = hardAtBase >= 2 ? 'Por hoy dejamos la escalera aquí: insistir cuando cuesta tanto solo cansa. Lo que hiciste <b>sí entrena</b> el camino entre tu oído y tu voz. Ahora vamos a cantar algo sencillo, sin presión.' : 'Esto está costando, y es normal al principio. Vamos con calma: una vez más, con más ayuda.'; if (hardAtBase >= 2) stop = 'soft'; }
     const top = (res.issues || [])[0];
     const choice = await new Promise((ok) => root.replaceChildren(h('div', { class: 'ex' },
       say(txt, mood),
@@ -164,6 +164,7 @@ export async function runClase(spec, root, sig) {
       h('div', { class: 'grow' }),
       h('div', { class: 'actionbar' }, h('button', { class: 'btn ghost', onclick: () => ok('end') }, 'Terminar aquí'), h('button', { class: 'btn primary big', onclick: () => { sfx('select'); ok('go'); } }, 'Seguir')))));
     if (choice === 'end') stop = true;
+    if (decision !== 'apoyo') hardAtBase = 0;
     // Remedio al tiro, como haría un profe: si se te cae el final de las notas, lo trabajamos ahora mismo
     if ((res.issues || []).some((x) => x.key === 'inestable' || x.key === 'tiembla') && !steadyDone && !stop) { steadyDone = true; for (const ex2 of steadyFix()) { await run(ex2, root, sig); if (sig.aborted) break; } }
     if ((res.issues || []).some((x) => x.key === 'cae') && !caeDone && !stop) { caeDone = true; for (const ex2 of endFix()) { await run(ex2, root, sig); if (sig.aborted) break; } }
@@ -180,10 +181,11 @@ export async function runClase(spec, root, sig) {
   }
   // 6) aplicarlo cantando
   let song = null;
-  if (!sig.aborted && !stop && feel !== 'ronca') {
+  if (!sig.aborted && stop !== true && feel !== 'ronca') {
     const sg = SONGS.find((x) => songStars(x.id) < 3) || pick(SONGS); const afin = skillLevel('afinacion'); const lv = afin < 4 ? 1 : Math.min(3, songStars(sg.id) + 1);
     await screen(root, [say(`Y ahora lo mejor: <b>cantar</b>. "${sg.title}" ${sg.emoji}, ${lv === 1 ? 'una parte, frase a frase' : 'nivel "' + LEVEL_TXT[lv].toLowerCase() + '"'}, en tu tono.`, 'celebra')], '🎤 ¡A cantar!');
-    let sr = null; try { sr = await run(songExercises(sg, lv)[0], root, sig); } catch (e) { console.error(e); }
+    const fnLast = (load().findNote || []).slice(-1)[0]; const sEx = { ...songExercises(sg, lv)[0] }; if (fnLast && fnLast.widened) sEx.tol = Math.max(sEx.tol || 0, 150);
+    let sr = null; try { sr = await run(sEx, root, sig); } catch (e) { console.error(e); }
     if (sr && sr.score != null && !sr.skipped) {
       song = { title: sg.title, score: sr.score }; log.push({ k: 'cancion', level: lv, name: sg.title, score: sr.score });
       if (sr.score >= 0.7 && (lv > 1 || songExercises(sg, 1).length === 1)) setSongStars(sg.id, lv);
