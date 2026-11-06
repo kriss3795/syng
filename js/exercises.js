@@ -386,7 +386,7 @@ async function runSeq(spec, root, sig) {
       const d = n.d * beat;
       if (n.s != null) {
         const m0 = base + n.s, m1 = n.g != null ? base + n.g : m0;
-        const tg = { t0: tt, t1: tt + d, m0, m1, label: n.l ?? (m0 === m1 ? label(n.s) : ''), demo, frames: [] };
+        const tg = { t0: tt, t1: tt + d, m0, m1, label: n.l ?? (m0 === m1 ? label(n.s) : ''), syl: n.l, br: !!n.br, demo, frames: [] };
         targets.push(tg);
         if (play) events.push({ type: m0 === m1 ? 'note' : 'glide', t: tt, d: d * 0.95, m0, m1, gain: 0.28 });
       }
@@ -450,7 +450,20 @@ async function runSeq(spec, root, sig) {
   const roundPill = h('span', { class: 'pill' });
   const comboEl = h('div', { class: 'combo-pop' });
   const comboPop = (n) => { comboEl.textContent = n >= 5 ? `🔥 ¡${n} seguidas!` : `+${n} seguidas`; comboEl.classList.remove('go'); void comboEl.offsetWidth; comboEl.classList.add('go'); };
-  root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, h('div', { class: 'combo-wrap' }, comboEl), canvas, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
+  // Karaoke: la letra de la frase actual, grande, con la sílaba que toca encendida
+  const kara = spec.karaoke ? h('div', { class: 'kara' }, h('div', { class: 'kara-cur' }), h('div', { class: 'kara-next' })) : null;
+  const karaLines = []; if (kara) { let cur = []; for (const tg of targets) { cur.push(tg); if (tg.br) { karaLines.push(cur); cur = []; } } if (cur.length) karaLines.push(cur); }
+  const sylHtml = (tg, on) => { const raw = String(tg.syl || ''); const glue = raw.endsWith('-'); const txt = glue ? raw.slice(0, -1) : raw; return `<span class="ks${on ? ' on' : ''}">${txt}</span>${glue ? '' : ' '}`; };
+  let karaLast = -2;
+  const karaUpdate = (now) => {
+    if (!kara) return;
+    let li = karaLines.findIndex((ln) => now < ln[ln.length - 1].t1 + 0.15); if (li < 0) li = karaLines.length - 1;
+    const ln = karaLines[li]; const ai = ln.findIndex((tg) => now >= tg.t0 - 0.05 && now < tg.t1); const key = li * 1000 + ai;
+    if (key === karaLast) return; karaLast = key;
+    kara.firstChild.innerHTML = ln.map((tg, k) => sylHtml(tg, k === ai)).join('');
+    const nx = karaLines[li + 1]; kara.lastChild.innerHTML = nx && nx[0].t0 - now < 6 ? nx.map((tg) => sylHtml(tg, false)).join('') : '';
+  };
+  root.replaceChildren(h('div', { class: 'ex' }, coachBox, reps.length > 1 ? h('div', { class: 'row between' }, roundPill) : null, h('div', { class: 'combo-wrap' }, comboEl), canvas, kara, h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, stopBtn)));
   const roll = new Roll(canvas, { span: Math.max(4, Math.min(8, beat * 10)), nowFrac: 0.3 });
   roll.targets = targets.map((x) => x);
   roll.fitTargets(3);
@@ -481,7 +494,7 @@ async function runSeq(spec, root, sig) {
   while (!sig.aborted && !stopped) {
     const now = c.currentTime - T0 - lat; // tiempo musical de lo que el micrófono capta ahora
     if (now > endT + 0.2) break;
-    scheduleAhead();
+    scheduleAhead(); karaUpdate(now);
     if (earlyStop != null && now > earlyStop) break;
     const rIdx = scoredRounds.findIndex((r) => now > r.t1 + 0.15 && r.ri > checkedRound);
     if (rIdx >= 0 && earlyStop == null && !spec.noEarly) {

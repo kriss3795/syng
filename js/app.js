@@ -8,6 +8,7 @@ import { runEnergy } from './energy.js';
 import { askProfe, profeOn, readAloud, stopReading, studentContext } from './profe.js';
 import { account, signIn, signOut, chooseSide, pull, push, syncInfo, onSync } from './account.js';
 import { runFindNote } from './findnote.js';
+import { SONGS, songExercises, songStars, setSongStars, LEVEL_TXT } from './cancionero.js';
 import { runMicCheck } from './miccheck.js';
 import { runResources, resourcesView, lastResTest, RES_INFO, RES_LESSON } from './resources.js';
 registerRunner('energy', runEnergy);
@@ -47,7 +48,7 @@ function renderHeader() {
     h('button', { class: 'stat-chip lvl', onclick: () => nav('#perfil'), 'aria-label': 'Nivel' }, levelOf(s.xp).icon + ' ' + levelOf(s.xp).n));
 }
 
-const FOCUS = /^(microfono$|clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
+const FOCUS = /^(canc-|microfono$|clase$|encuentra$|profe-ia$|cuenta$|recursos$|rutina|mapa$|juego-|cantar-ya|leccion|hoy|calentamiento|extra|rango|frase-|diagnostico|identidad|repaso|practicar-|fiesta-|lineas-|escuchar-|guia-|solo-|sincronizar-)/;
 async function route() {
   sig.aborted = true;
   sig = { aborted: false };
@@ -75,6 +76,8 @@ async function route() {
     if (hsh === 'profe-ia') return chatView();
     if (hsh === 'clase') return session({ title: 'Clase con tu profe', color: 'teal', exercises: [{ type: 'tutor' }], id: 'clase', back: '#aprender', backLabel: 'Volver al inicio' });
     if (hsh === 'microfono') return session({ title: '¿Me está midiendo bien?', color: 'teal', exercises: [{ type: 'miccheck' }], id: 'microfono', back: '#perfil', backLabel: 'Volver' });
+    if (hsh === 'cancionero') return cancioneroView();
+    { const m = /^canc-(\w+)-(\d)$/.exec(hsh); if (m) { const sg = SONGS.find((x) => x.id === m[1]); if (sg) { const lv = Number(m[2]); return session({ title: `${sg.title} · ${LEVEL_TXT[lv]}`, color: 'purple', exercises: songExercises(sg, lv), id: hsh, back: '#cancionero', backLabel: 'Volver al cancionero' }); } } }
     if (hsh === 'encuentra') return session({ title: 'Encuentra la nota', color: 'teal', exercises: [{ type: 'findnote', n: 6 }], id: 'encuentra', back: '#aprender', backLabel: 'Volver al inicio' });
     if (hsh === 'recursos') return session({ title: 'Prueba tus recursos vocales', color: 'green', exercises: [{ type: 'resources' }], id: 'recursos', back: '#recursos-ver', backLabel: 'Ver mis resultados' });
     if (hsh === 'recursos-ver') { const t = lastResTest(); if (!t) return nav('#recursos');
@@ -198,7 +201,7 @@ function homeView() {
       h('div', { class: 'path' }, nodes));
   }
   // En celular: todo en una columna. En computador: el camino a la izquierda y tus tarjetas del día a la derecha.
-  const side = [findCard(), chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  const side = [songbookCard(), findCard(), chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
   view.replaceChildren(h('div', { class: 'page home' }, installBanner(), h('div', { class: 'home-hero' }, hero),
     side.length ? h('aside', { class: 'home-side' }, ...side) : null, h('div', { class: 'home-path' }, ...path)));
   const cur = view.querySelector('.node.current');
@@ -394,6 +397,7 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
   record({ type: id, pitch: score, cents: avgC, timing: metrics.timing.length ? metrics.timing.reduce((a, b) => a + b, 0) / metrics.timing.length : null, issues: issueKeys });
   let stars = null;
   if (lesson) stars = setLesson(id, score, level);
+  const cm = /^canc-(\w+)-(\d)$/.exec(id || ''); if (cm && score >= 0.7) setSongStars(cm[1], Number(cm[2]));
   // Si el nivel 1 te salió excelente, no te hago repetir la lección: te salto el nivel 2.
   const skipped = lesson && !lesson.check && level < LEVELS_TO_PASS && score >= 0.88;
   if (skipped) setLesson(id, score, LEVELS_TO_PASS);
@@ -644,6 +648,20 @@ async function runTutor(spec, root, sig) {
     h('div', { class: 'tutor-ladder' }, ...LADDER.map((l, i) => h('div', { class: 'tl-step' + (i < level ? ' done' : i === level ? ' cur' : '') }, h('span', {}, i + 1), l.name))),
     h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); getCtx(); res(); } }, 'Empezar la clase')))));
   if (sig.aborted) return { score: 0 };
+  // 1a) como un profe: "¿cómo llega tu voz hoy?" y adapto la clase
+  const feel = await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say('Antes de empezar: <b>¿cómo está tu voz hoy?</b>', 'atento'),
+    h('div', { class: 'feel-opts' },
+      h('button', { class: 'btn big', onclick: () => res('bien') }, '😄 Bien, con ganas'),
+      h('button', { class: 'btn big', onclick: () => res('cansada') }, '😮‍💨 Cansada o con sueño'),
+      h('button', { class: 'btn big', onclick: () => res('ronca') }, '🤒 Ronca o me molesta')), h('div', { class: 'grow' }))));
+  if (sig.aborted) return { score: 0 };
+  if (feel === 'ronca') {
+    await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say('Gracias por decirme. Con la voz ronca o molesta <b>no conviene cantar fuerte ni agudo</b>: hoy hacemos una clase cortita y suave, solo de oído y notas cómodas. Toma agua tibia y, si la ronquera dura más de dos semanas, consulta a un fonoaudiólogo.', 'piensa'), h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => res() }, 'Clase suave')))));
+    spec = { ...spec, max: 3 }; level = Math.min(level, 1);
+  } else if (feel === 'cansada') {
+    await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say('Entonces hoy una clase <b>más corta</b> y sin exigirte: lo importante es practicar un poco todos los días, no mucho un día.', 'feliz'), h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => res() }, 'Vamos')))));
+    spec = { ...spec, max: 5 };
+  }
   // 1b) la primera vez: comprobar juntos que el micrófono te mide bien (así confías en lo que marco)
   if (!load().micCheck && !spec.noVoice) { await run({ type: 'miccheck' }, root, sig); if (sig.aborted) return { score: 0 }; }
   // 2) tu propia voz como modelo (una sola vez)
@@ -684,6 +702,18 @@ async function runTutor(spec, root, sig) {
     if (dirIssue && !earDone) { earDone = true; await run({ ...ear('updown'), text: 'Un minijuego rápido de oído: <b>¿la segunda nota es más aguda o más grave?</b> Saberlo es lo que te dice hacia dónde mover la voz.' }, root, sig); }
     if (streakHard >= 3 && level === 0) break;
   }
+  // 5) como en toda buena clase: terminamos CANTANDO una canción de verdad
+  if (!sig.aborted && feel !== 'ronca' && log.length) {
+    const sg = SONGS.find((x) => songStars(x.id) < 3) || SONGS[0]; const lv = level < 4 ? 1 : Math.min(3, songStars(sg.id) + 1);
+    await new Promise((res) => root.replaceChildren(h('div', { class: 'ex' }, say(`Y ahora lo mejor: <b>aplicarlo cantando</b>. Vamos con "${sg.title}" ${sg.emoji}, ${lv === 1 ? 'la primera parte, frase a frase' : 'en el nivel "' + LEVEL_TXT[lv].toLowerCase() + '"'}. La pongo en tu tono.`, 'celebra'), h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => { sfx('select'); res(); } }, '🎤 ¡A cantar!')))));
+    const ex = songExercises(sg, lv)[0];
+    let sr = null; try { sr = await run(ex, root, sig); } catch (e) { console.error(e); }
+    if (sr && sr.score != null && !sr.skipped) {
+      log.push({ level, name: 'Canción: ' + sg.title, score: sr.score });
+      if (sr.score >= 0.7 && lv > 1) setSongStars(sg.id, lv); else if (sr.score >= 0.7 && songExercises(sg, 1).length === 1) setSongStars(sg.id, 1);
+      await new Promise((ok) => root.replaceChildren(h('div', { class: 'ex' }, say(sr.score >= 0.7 ? `¡Cantaste "${sg.title}"! ${Math.round(sr.score * 100)}% de las notas afinadas. Eso ya es cantar.` : `Primer contacto con "${sg.title}": ${Math.round(sr.score * 100)}%. La próxima clase sale mejor.`, sr.score >= 0.7 ? 'celebra' : 'feliz'), listenRow(sr), h('div', { class: 'grow' }), h('div', { class: 'actionbar' }, h('button', { class: 'btn primary big', onclick: () => ok() }, 'Seguir')))));
+    }
+  }
   const s = load(); s.mastery = s.mastery || {};
   s.mastery.afinacion = { level, best: Math.max(best, (lastM && lastM.best) || 0), at: Date.now(), hist: [...((lastM && lastM.hist) || []), { at: Date.now(), from: startLv, to: level, n: log.length }].slice(-30) };
   save();
@@ -698,6 +728,22 @@ async function runTutor(spec, root, sig) {
 }
 
 // ---------- Habla con tu profe (IA) ----------
+function songbookCard() {
+  const done = SONGS.filter((sg) => songStars(sg.id) > 0).length;
+  return h('button', { class: 'card rec song-card', onclick: () => { sfx('select'); nav('#cancionero'); } }, h('div', { class: 'card-ic' }, '🎤'),
+    h('div', {}, h('b', {}, 'Canta una canción ahora'), h('div', { class: 'small muted' }, done ? `Llevas ${done} de ${SONGS.length} canciones. ¡Sube de nivel en una!` : 'Canciones conocidas con letra en pantalla, en tu tono. Desde el primer día.')), icon('chevron'));
+}
+function cancioneroView() {
+  const back = h('div', { class: 'row between' }, h('button', { class: 'iconbtn', onclick: () => nav('#aprender') }, icon('back')), h('span', {}));
+  view.replaceChildren(h('div', { class: 'page' }, back, h('h1', {}, 'Cancionero'),
+    say('Canciones de verdad, en <b>tu</b> tono y con la letra en pantalla. Empieza <b>frase a frase</b>; cuando te salga, súbela a <b>conmigo</b> y luego a <b>tú solo</b>. Y si tienes tus propias canciones, están en "Canciones".', 'feliz', { compact: true }),
+    h('div', { class: 'songbook' }, ...SONGS.map((sg) => { const st = songStars(sg.id); const nextLv = Math.min(3, st + 1);
+      return h('div', { class: 'card sb-item' },
+        h('div', { class: 'row between' }, h('div', { class: 'row' }, h('div', { class: 'card-ic' }, sg.emoji), h('div', {}, h('b', {}, sg.title), h('div', { class: 'small muted' }, sg.who))), h('span', { class: 'sb-stars' }, '★'.repeat(st) + '☆'.repeat(3 - st))),
+        h('p', { class: 'small' }, sg.why),
+        h('div', { class: 'sb-levels' }, ...[1, 2, 3].map((lv) => h('button', { class: 'btn small' + (lv === nextLv ? ' primary' : ''), disabled: lv > st + 1, onclick: () => { sfx('select'); nav(`#canc-${sg.id}-${lv}`); } }, (lv <= st ? '✓ ' : lv > st + 1 ? '🔒 ' : '') + LEVEL_TXT[lv])))); })),
+    h('button', { class: 'btn', onclick: () => nav('#canciones') }, '🎵 Mis canciones (Suno u otras)')));
+}
 function findCard() {
   const fh = load().findNote || []; const last = fh[fh.length - 1];
   return h('button', { class: 'card rec find-card', onclick: () => { sfx('select'); nav('#encuentra'); } }, h('div', { class: 'card-ic' }, '🎯'),
