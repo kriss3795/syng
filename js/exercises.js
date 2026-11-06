@@ -6,7 +6,11 @@ import { h, Roll, tuner, levelMeter, sleep, icon } from './ui.js';
 import { say, chincol, diagnoseSeq, line } from './coach.js';
 import { observe } from './adapt.js';
 import { stopSpeaking, sfx } from './voice.js';
-import { getRange, setRange, homeNote, voiceProfile, setVoiceProfile, addDiagnosis, diagnoses, setIdentity } from './store.js';
+import { getRange, setRange, homeNote, voiceProfile, setVoiceProfile, addDiagnosis, diagnoses, setIdentity, settings } from './store.js';
+// Octava libre: si cantas la MISMA nota una octava más grave o más aguda (muy común al empezar, sobre todo
+// en voces de hombre con notas de referencia), cuenta como la nota. Se puede desactivar en Ajustes.
+const octFree = () => settings().octaveFree !== false;
+export const fold = (midi, target) => (midi == null || !octFree() ? midi : midi + 12 * Math.round((target - midi) / 12));
 
 export const raf = () => new Promise((r) => requestAnimationFrame(r));
 
@@ -264,12 +268,13 @@ export async function runMatch(spec, root, sig) {
         if (lastCoach !== (mem ? 'mem' : 'esc')) { setCoach(mem ? '🧠 Guárdala en tu cabeza, en silencio. Tarárala por dentro…' : '👂 Escucha la nota…', mem ? 'piensa' : 'canta'); lastCoach = mem ? 'mem' : 'esc'; }
         roll.draw(now); await raf(); continue;
       }
-      const cents = tu.update(p.midi, target);
+      const pmF = fold(p.midi, target); const rawC = p.midi != null ? (p.midi - target) * 100 : null;
+      const cents = tu.update(pmF, target);
       const inT = cents != null && cents >= lo && cents <= hi;
       if (cents != null && first == null) first = cents;
       if (cents != null && Math.abs(cents) < 200) signed.push(cents);
       if (cents != null && Math.abs(cents) < 150) noteF.push({ c: cents, rms: p.rms });
-      if (cents != null) { voicedN++; levels.push(p.rms); if (Math.abs(Math.abs(cents) - 1200) < 80) octN++; }
+      if (cents != null) { voicedN++; levels.push(p.rms); if (rawC != null && Math.abs(rawC) > 900) octN++; }
       // el Chincol te acompaña mientras cantas
       const st = cents == null ? 'nada' : inT ? 'ok' : Math.abs(cents) > 150 ? 'lejos' : 'cerca';
       if (st !== lastCoach) {
@@ -279,7 +284,7 @@ export async function runMatch(spec, root, sig) {
         else if (st === 'lejos') setCoach(cents < 0 ? 'Estás bastante más grave. Sube despacio, como una sirena.' : 'Estás bastante más agudo. Baja despacio, como una sirena.', 'atento');
         else setCoach(cents < 0 ? 'Casi: sube un pelito.' : 'Casi: baja un pelito.', 'atento');
       }
-      roll.addUser(now, p.midi, p.midi == null ? null : inT);
+      roll.addUser(now, pmF, p.midi == null ? null : inT);
       roll.draw(now);
       if (cents != null) best = Math.min(best, Math.max(0, cents < lo ? lo - cents : cents > hi ? cents - hi : 0));
       if (inT) { held += dt; centsHeld.push(cents); }
@@ -484,7 +489,7 @@ async function runSeq(spec, root, sig) {
   const recorder = startRecorder();
   // Si una ronda que cantas tú sale muy bien, no te hago repetir las demás: repetir lo que ya dominas aburre y no enseña.
   const scoredRounds = rounds.map((r, ri) => ({ ...r, ri, tgs: targets.filter((x) => !x.demo && x.t0 >= r.t0 - 0.01 && x.t0 < r.t1) })).filter((r) => r.tgs.length);
-  let earlyStop = null, checkedRound = -1;
+  let earlyStop = null, checkedRound = -1, seqShift = 0;
 
   resetSmoother();
   const lat = latency();
@@ -515,9 +520,10 @@ async function runSeq(spec, root, sig) {
       if (p.midi != null) {
         const frac = (now - active.t0) / (active.t1 - active.t0);
         const tm = active.m0 + (active.m1 - active.m0) * Math.min(1, Math.max(0, frac));
-        const cents = (p.midi - tm) * 100;
+        const pm = fold(p.midi, tm); seqShift = pm - p.midi;
+        const cents = (pm - tm) * 100;
         ok = Math.abs(cents) <= (active.m0 === active.m1 ? tol / 2 : tol);
-        active.frames.push({ t: now, cents, ok, rc: p.raw != null ? (p.raw - tm) * 100 : null, rms: p.rms });
+        active.frames.push({ t: now, cents, ok, rc: p.raw != null ? (fold(p.raw, tm) - tm) * 100 : null, rms: p.rms });
         if (Math.abs(cents) < 150) { biasWin.push({ t: now, c: cents }); }
       } else active.frames.push({ t: now, cents: null, ok: false });
     }
@@ -556,7 +562,7 @@ async function runSeq(spec, root, sig) {
       if (nxt && prv && Math.abs(nxt.m0 - prv.m0) >= 4) liveTip = { txt: (nxt.m0 > prv.m0 ? '⬆' : '⬇') + ' Salto: ¡exagéralo!', until: nxt.t0 + 0.4 };
     }
     if (liveTip && now > liveTip.until) liveTip = null;
-    roll.addUser(now, p.midi, ok);
+    roll.addUser(now, p.midi != null ? p.midi + seqShift : null, ok);
     roll.draw(now, { showUser: feedback === 'live' && (fadeAt == null || now < fadeAt - 0.3) });
     const cur = targets.find((x) => now >= x.t0 && now <= x.t1);
     const cue = cues.find((q) => now >= q.t0 && now <= q.t1);
@@ -888,7 +894,7 @@ async function runSustain(spec, root, sig) {
     while (!sig.aborted) {
       const now = c.currentTime;
       const p = readPitch();
-      const cents = p.midi != null ? (p.midi - target) * 100 : null;
+      const cents = p.midi != null ? (fold(p.midi, target) - target) * 100 : null;
       if (started == null && cents != null && Math.abs(cents) < 150) started = now;
       if (started != null) {
         fr.push({ t: now - started, cents, rms: p.rms });
@@ -904,7 +910,7 @@ async function runSustain(spec, root, sig) {
         const st = avgR >= loudT ? 'ok' : 'low';
         if (st !== lastLoud) { lastLoud = st; setCoach(st === 'ok' ? '¡Eso! Voz con cuerpo, sin gritar.' : '¡Más voz! Como si llamaras a alguien al otro lado de la pieza.', st === 'ok' ? 'celebra' : 'atento'); airFill.classList.toggle('low', st === 'low'); }
       }
-      roll.addUser(now, p.midi, cents == null ? null : Math.abs(cents) <= tol / 2);
+      roll.addUser(now, fold(p.midi, target), cents == null ? null : Math.abs(cents) <= tol / 2);
       roll.draw(now);
       await raf();
     }
@@ -1353,7 +1359,7 @@ async function runDynamics(spec, root, sig) {
       const p = readPitch();
       const db = 20 * Math.log10(Math.max(1e-5, p.rms));
       sm = sm * 0.7 + db * 0.3;
-      const cents = p.midi != null ? (p.midi - target) * 100 : null;
+      const cents = p.midi != null ? (fold(p.midi, target) - target) * 100 : null;
       if (started == null && cents != null && Math.abs(cents) < 150) started = now;
       let el = null;
       if (started != null) {
@@ -1362,7 +1368,7 @@ async function runDynamics(spec, root, sig) {
         if (el >= secs) break;
       }
       if (started == null && now - tStart > 10) break;
-      roll.addUser(now, p.midi, cents == null ? null : Math.abs(cents) <= tol / 2);
+      roll.addUser(now, fold(p.midi, target), cents == null ? null : Math.abs(cents) <= tol / 2);
       roll.draw(now); drawVol(el);
       await raf();
     }

@@ -154,7 +154,9 @@ function homeView() {
     next ? h('button', { class: 'linkbtn center-link', onclick: () => { sfx('select'); nav('#hoy'); } }, `O sigue el camino de lecciones: "${next.title}" →`) : null,
     curStage ? h('button', { class: 'stage-chip', onclick: () => nav('#metodo') }, `Etapa ${curStage.n} de ${STAGES.length}: ${curStage.title}`) : null,
     first ? null : h('div', { class: 'week' }, ...weekDots().map((d) => h('div', { class: 'wd' + (d.on ? ' on' : '') + (d.today ? ' today' : '') }, h('span', {}, d.on ? '🔥' : ''), h('small', {}, d.l))), freezes() ? h('div', { class: 'wd frz', title: 'Protectores de racha' }, h('span', {}, '🧊'), h('small', {}, '×' + freezes())) : null),
-    h('button', { class: 'btn big sing-now', onclick: () => { sfx('select'); nav('#cantar-ya'); } }, icon('mic', 18), s.lastSong ? 'Cantar ya: tu canción' : 'Cantar ya: 3 minutos'));
+    h('div', { class: 'quick2' },
+      h('button', { class: 'btn big', onclick: () => { sfx('select'); nav('#cancionero'); } }, '🎤 Cantar una canción'),
+      h('button', { class: 'btn big', onclick: () => { sfx('select'); nav('#profe-ia'); } }, '💬 Preguntar al profe')));
   const rec = recommend(s.history || []);
   const recCard = rec ? h('button', { class: 'card rec', onclick: () => nav('#extra-' + rec.kind) },
     chincol('piensa', 44),
@@ -201,9 +203,13 @@ function homeView() {
       h('div', { class: 'path' }, nodes));
   }
   // En celular: todo en una columna. En computador: el camino a la izquierda y tus tarjetas del día a la derecha.
-  const side = [songbookCard(), findCard(), chatCard(), first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  const side = [findCard(), s.lastSong ? h('button', { class: 'card rec', onclick: () => nav('#cantar-ya') }, h('div', { class: 'card-ic' }, '🎵'), h('div', {}, h('b', {}, 'Cantar tu canción'), h('div', { class: 'small muted' }, 'La última canción tuya que practicaste.')), icon('chevron')) : null, first ? null : questsCard(), first ? null : routineCard(), resCard(), profeCard(), recCard, reviewCard].filter(Boolean);
+  // Práctico: arriba UNA cosa que hacer (la clase con el profe) y dos atajos. Todo lo demás, guardado en "Más".
+  const wide = window.innerWidth >= 1000;
+  const more = h('details', { class: 'more-box', open: wide || undefined }, h('summary', {}, h('b', {}, 'Más para practicar'), h('span', { class: 'small muted' }, ' · taller de notas, rutina, recursos, misiones')), ...side);
+  const pathBox = h('details', { class: 'more-box path-box' }, h('summary', {}, h('b', {}, 'Camino de lecciones'), h('span', { class: 'small muted' }, ` · ${nDone} de ${ALL_LESSONS.filter((l) => !l.check).length} lecciones, en orden`)), ...path);
   view.replaceChildren(h('div', { class: 'page home' }, installBanner(), h('div', { class: 'home-hero' }, hero),
-    side.length ? h('aside', { class: 'home-side' }, ...side) : null, h('div', { class: 'home-path' }, ...path)));
+    side.length ? h('aside', { class: 'home-side' }, more) : null, h('div', { class: 'home-path' }, pathBox)));
   const cur = view.querySelector('.node.current');
   if (cur && !first) setTimeout(() => cur.scrollIntoView({ block: 'center', behavior: 'smooth' }), 150);
 }
@@ -440,11 +446,11 @@ async function session({ title, color, exercises, id, lesson, level = LEVELS_TO_
 const plain = (x) => String(x || '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
 // El profe con IA comenta tu intento (si tienes cuenta). Mientras piensa, ves el consejo de siempre.
 function profeBox(kind, data) {
-  if (!profeOn()) return null;
+  if (!profeOn()) return h('button', { class: 'profe-ai off', onclick: () => nav('#cuenta') }, h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe con IA'), h('p', { class: 'small' }, 'Está apagado porque no has entrado a tu cuenta en este dispositivo. Toca aquí para entrar y te comentará cada intento.'));
   const box = h('div', { class: 'profe-ai thinking' }, h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe', h('span', { class: 'dots' }, h('i'), h('i'), h('i'))), h('p', { class: 'small muted' }, 'Escuchando tu intento…'));
   askProfe(kind, data).then((r) => {
     if (!box.isConnected && !document.body.contains(box)) return;
-    if (!r.text) { box.remove(); return; }
+    if (!r.text) { box.classList.remove('thinking'); box.replaceChildren(h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe'), h('p', { class: 'small muted' }, 'No pude responder esta vez: ' + (r.error || 'sin conexión') + '.')); return; }
     const rd = h('button', { class: 'iconbtn small', 'aria-label': 'Escuchar', onclick: () => readAloud(r.text) }, icon('speaker', 16));
     box.classList.remove('thinking');
     box.replaceChildren(h('div', { class: 'pa-head' }, '🧑‍🏫 Tu profe', rd), h('p', {}, r.text));
@@ -1040,7 +1046,7 @@ function profileView() {
     h('div', { class: 'card settings' }, h('h3', {}, 'Ajustes'),
       sw('voice', 'Voz del Chincol', 'Te lee las instrucciones'),
       sw('sfx', 'Sonidos', 'Aciertos, errores y celebraciones'),
-      sw('octaveFree', 'Aceptar otra octava en canciones', 'Para cantar canciones de voces más agudas o graves', true),
+      sw('octaveFree', 'Aceptar la misma nota en otra octava', 'En ejercicios y canciones: si cantas la nota una octava más grave o más aguda, cuenta igual', true),
       sw('echoCancel', 'Cancelación de eco', 'Solo si cantas sin audífonos y la música confunde al detector', false),
       h('label', { class: 'set-row' }, h('span', {}, h('b', {}, 'Sonido de las notas guía')), timbre),
       h('div', { class: 'set-row col' }, h('span', {}, h('b', {}, 'Latencia (ms)'), h('small', {}, 'Para medir bien si entras a tiempo. Mídela sin audífonos. Con Bluetooth el retraso es mayor: para ritmo, mejor audífonos con cable.')), h('div', { class: 'row' }, lat, calibBtn), calibMsg),

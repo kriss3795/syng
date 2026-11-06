@@ -662,3 +662,16 @@ input[type=range] { accent-color: var(--primary); height: 28px; }
 .sb-levels .btn { flex: 1 1 auto; }
 @media (min-width: 1000px) { .songbook { grid-template-columns: 1fr 1fr; } }
 .feel-opts { display: grid; gap: 10px; margin: 14px 0; } .feel-opts .btn { justify-content: flex-start; }
+/* Inicio práctico */
+.quick2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.quick2 .btn { font-size: 15px; padding-left: 8px; padding-right: 8px; }
+.more-box { margin: 14px 0; border: 2px solid var(--line); border-radius: 18px; background: var(--card); padding: 4px 12px 8px; }
+.more-box > summary { cursor: pointer; padding: 10px 2px; list-style: none; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.more-box > summary::-webkit-details-marker { display: none; }
+.more-box > summary::after { content: '▾'; margin-left: auto; color: var(--muted); font-size: 18px; transition: transform .15s; }
+.more-box[open] > summary::after { transform: rotate(180deg); }
+.more-box > .card { margin: 8px 0; }
+.profe-ai.off { display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; }
+@media (min-width: 1000px) { .home-side .more-box { margin-top: 12px; } }
+@media (min-width: 1000px) { .page.home { grid-template-rows: auto auto 1fr; } .home-path { align-self: start; } }
+@media (max-width: 520px) { .hero .stage-chip, .hero .week, .hero .center-link { display: none; } .hero .goal .ring { transform: scale(.8); } }

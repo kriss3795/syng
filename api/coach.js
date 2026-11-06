@@ -31,7 +31,8 @@ async function gemini(messages, maxTokens) {
   });
   const j = await r.json().catch(() => ({}));
   const j0 = Array.isArray(j) ? j[0] : j;
-  if (r.ok && j0.choices && j0.choices[0]) return { text: String(j0.choices[0].message.content || '').trim(), model: 'gemini' };
+  const txt = r.ok && j0.choices && j0.choices[0] ? String((j0.choices[0].message && j0.choices[0].message.content) || '').trim() : '';
+  if (txt) return { text: txt, model: 'gemini' };
   console.error('gemini', r.status, JSON.stringify(j).slice(0, 400));
   throw Object.assign(new Error('El profe con IA no está disponible ahora.'), { status: 503, detail: { status: r.status, msg: (j0.error && j0.error.message) || r.statusText } });
 }

@@ -26,7 +26,7 @@ export function studentContext() {
   };
 }
 
-export async function askProfe(kind, data, messages = null, timeoutMs = 12000) {
+export async function askProfe(kind, data, messages = null, timeoutMs = 25000) {
   const a = account(); if (!a) return { error: 'sin cuenta' };
   const ctl = new AbortController(); const t = setTimeout(() => ctl.abort(), timeoutMs);
   try {
